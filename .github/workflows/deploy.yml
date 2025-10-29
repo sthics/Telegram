@@ -1,0 +1,87 @@
+name: CI-CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: coverage.out
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: docker/setup-buildx-action@v2
+
+      - uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push gateway
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.gateway
+          push: true
+          tags: ghcr.io/${{ github.repository }}/gateway:${{ github.sha }},ghcr.io/${{ github.repository }}/gateway:latest
+
+      - name: Build and push chat-svc
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.chat-svc
+          push: true
+          tags: ghcr.io/${{ github.repository }}/chat-svc:${{ github.sha }},ghcr.io/${{ github.repository }}/chat-svc:latest
+
+      - name: Build and push presence-svc
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.presence-svc
+          push: true
+          tags: ghcr.io/${{ github.repository }}/presence-svc:${{ github.sha }},ghcr.io/${{ github.repository }}/presence-svc:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to k3s
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.K3S_HOST }}
+          username: ubuntu
+          key: ${{ secrets.K3S_KEY }}
+          script: |
+            kubectl set image deployment/gateway \
+              gateway=ghcr.io/${{ github.repository }}/gateway:${{ github.sha }}
+            kubectl set image deployment/chat-svc \
+              chat-svc=ghcr.io/${{ github.repository }}/chat-svc:${{ github.sha }}
+            kubectl set image deployment/presence-svc \
+              presence-svc=ghcr.io/${{ github.repository }}/presence-svc:${{ github.sha }}

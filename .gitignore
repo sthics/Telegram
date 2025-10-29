@@ -1,0 +1,204 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+gateway
+chat-svc
+presence-svc
+bin/
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.out
+coverage.html
+cover.out
+cover.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IDE - JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+
+# IDE - Vim
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# IDE - Emacs
+*~
+\#*\#
+.\#*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Secrets and keys
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+secrets/
+*.secret
+credentials.json
+service-account.json
+
+# Logs
+*.log
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+.cache/
+
+# Docker
+*.pid
+.dockerignore
+
+# Protobuf generated files (uncomment if you want to gitignore them)
+# internal/pb/*.pb.go
+# internal/pb/*.pb.gw.go
+# internal/pb/*_grpc.pb.go
+
+# Air (live reload tool)
+.air.toml
+tmp/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Build artifacts
+build/
+dist/
+out/
+
+# Node modules (if you have any frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Go private modules cache
+GOCACHE/
+
+# Delve debugger
+debug
+debug.test
+__debug_bin
+
+# Profiling
+*.prof
+*.pprof
+cpu.prof
+mem.prof
+profile.out
+
+# Local development
+local/
+.local/
+
+# Claude Code artifacts (if any)
+.claude/
+
+# Misc
+*.orig
+*.rej
+.tern-port
+.sass-cache/
+.eslintcache
+
+# Testing
+testdata/output/
+*.test.log
+
+# Documentation build output
+docs/_build/
+site/
+
+# Kubernetes
+*.kubeconfig
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# CI/CD
+.gitlab-ci-local/
+
+# Editor backup files
+*~
+\#*\#
+.#*
+
+# Mac specific
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk

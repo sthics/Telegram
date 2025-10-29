@@ -1,0 +1,24 @@
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /src
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the chat-svc binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o chat-svc ./cmd/chat-svc
+
+# Final stage
+FROM scratch
+
+# Copy CA certificates
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy binary
+COPY --from=builder /src/chat-svc /chat-svc
+
+ENTRYPOINT ["/chat-svc"]
