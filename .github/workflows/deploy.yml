@@ -67,21 +67,21 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}/presence-svc:${{ github.sha }},ghcr.io/${{ github.repository }}/presence-svc:latest
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Deploy to k3s
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.K3S_HOST }}
-          username: ubuntu
-          key: ${{ secrets.K3S_KEY }}
-          script: |
-            kubectl set image deployment/gateway \
-              gateway=ghcr.io/${{ github.repository }}/gateway:${{ github.sha }}
-            kubectl set image deployment/chat-svc \
-              chat-svc=ghcr.io/${{ github.repository }}/chat-svc:${{ github.sha }}
-            kubectl set image deployment/presence-svc \
-              presence-svc=ghcr.io/${{ github.repository }}/presence-svc:${{ github.sha }}
+  # deploy:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Deploy to k3s
+  #       uses: appleboy/ssh-action@v0.1.5
+  #       with:
+  #         host: ${{ secrets.K3S_HOST }}
+  #         username: ubuntu
+  #         key: ${{ secrets.K3S_KEY }}
+  #         script: |
+  #           kubectl set image deployment/gateway \
+  #             gateway=ghcr.io/${{ github.repository }}/gateway:${{ github.sha }}
+  #           kubectl set image deployment/chat-svc \
+  #             chat-svc=ghcr.io/${{ github.repository }}/chat-svc:${{ github.sha }}
+  #           kubectl set image deployment/presence-svc \
+  #             presence-svc=ghcr.io/${{ github.repository }}/presence-svc:${{ github.sha }}
