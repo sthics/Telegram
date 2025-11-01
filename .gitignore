@@ -4,9 +4,9 @@
 *.dll
 *.so
 *.dylib
-gateway
-chat-svc
-presence-svc
+/gateway
+/chat-svc
+/presence-svc
 bin/
 dist/
 
