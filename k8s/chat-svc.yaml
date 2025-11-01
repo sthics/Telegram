@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-svc
+  namespace: minitelegram
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: chat-svc
+  template:
+    metadata:
+      labels:
+        app: chat-svc
+    spec:
+      containers:
+        - name: chat-svc
+          image: ghcr.io/sthics/telegram/chat-svc:latest
+          imagePullPolicy: Always
+          env:
+            - name: DSN
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DSN
+            - name: REDIS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: REDIS_ADDR
+            - name: AMQP_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: AMQP_URL

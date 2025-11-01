@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: presence-svc
+  namespace: minitelegram
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: presence-svc
+  template:
+    metadata:
+      labels:
+        app: presence-svc
+    spec:
+      containers:
+        - name: presence-svc
+          image: ghcr.io/sthics/telegram/presence-svc:latest
+          imagePullPolicy: Always
+          env:
+            - name: DSN
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DSN
+            - name: REDIS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: REDIS_ADDR
+            - name: AMQP_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: AMQP_URL

@@ -49,7 +49,7 @@ jobs:
           context: .
           file: Dockerfile.gateway
           push: true
-          tags: ghcr.io/${{ github.repository }}/gateway:${{ github.sha }},ghcr.io/${{ github.repository }}/gateway:latest
+          tags: ghcr.io/${{ github.repository_owner }}/telegram/gateway:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/telegram/gateway:latest
 
       - name: Build and push chat-svc
         uses: docker/build-push-action@v4
@@ -57,7 +57,7 @@ jobs:
           context: .
           file: Dockerfile.chat-svc
           push: true
-          tags: ghcr.io/${{ github.repository }}/chat-svc:${{ github.sha }},ghcr.io/${{ github.repository }}/chat-svc:latest
+          tags: ghcr.io/${{ github.repository_owner }}/telegram/chat-svc:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/telegram/chat-svc:latest
 
       - name: Build and push presence-svc
         uses: docker/build-push-action@v4
@@ -65,7 +65,7 @@ jobs:
           context: .
           file: Dockerfile.presence-svc
           push: true
-          tags: ghcr.io/${{ github.repository }}/presence-svc:${{ github.sha }},ghcr.io/${{ github.repository }}/presence-svc:latest
+          tags: ghcr.io/${{ github.repository_owner }}/telegram/presence-svc:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/telegram/presence-svc:latest
 
   # deploy:
   #   needs: build
