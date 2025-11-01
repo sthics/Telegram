@@ -84,6 +84,57 @@ func (c *Client) DeclareExchanges() error {
 		return fmt.Errorf("failed to declare delivery.topic exchange: %w", err)
 	}
 
+	// Declare presence.fanout exchange for broadcasting presence updates
+	if err := c.channel.ExchangeDeclare(
+		"presence.fanout", // name
+		"fanout",          // type - fanout broadcasts to all bound queues
+		true,              // durable
+		false,             // auto-deleted
+		false,             // internal
+		false,             // no-wait
+		nil,               // arguments
+	); err != nil {
+		return fmt.Errorf("failed to declare presence.fanout exchange: %w", err)
+	}
+
+	return nil
+}
+
+// DeclareSharedChatQueue declares a single shared queue for all chat messages
+// This follows best practices for scalable message processing systems
+func (c *Client) DeclareSharedChatQueue() error {
+	queueName := "chat.messages"
+
+	// Declare queue with lazy mode and TTL
+	args := amqp.Table{
+		"x-queue-mode":   "lazy",
+		"x-message-ttl":  86400000, // 24 hours in milliseconds
+		"x-max-priority": 3,        // Support message priorities
+	}
+
+	_, err := c.channel.QueueDeclare(
+		queueName, // name
+		true,      // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		args,      // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("failed to declare shared chat queue: %w", err)
+	}
+
+	// Bind queue to exchange with wildcard routing key to capture all chat messages
+	if err := c.channel.QueueBind(
+		queueName,    // queue name
+		"*",          // routing key (wildcard to match all chat IDs)
+		"chat.topic", // exchange
+		false,        // no-wait
+		nil,          // arguments
+	); err != nil {
+		return fmt.Errorf("failed to bind shared chat queue: %w", err)
+	}
+
 	return nil
 }
 
@@ -192,6 +243,7 @@ func (c *Client) PublishToDeliveryExchange(ctx context.Context, chatID int64, bo
 }
 
 // ConsumeChatQueue starts consuming messages from a chat queue
+// Deprecated: Use ConsumeSharedChatQueue for better scalability
 func (c *Client) ConsumeChatQueue(chatID int64, consumerTag string) (<-chan amqp.Delivery, error) {
 	queueName := fmt.Sprintf("chat.%d", chatID)
 
@@ -206,6 +258,151 @@ func (c *Client) ConsumeChatQueue(chatID int64, consumerTag string) (<-chan amqp
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start consuming: %w", err)
+	}
+
+	return msgs, nil
+}
+
+// ConsumeSharedChatQueue starts consuming from the shared chat messages queue
+// This is the recommended approach for scalable message processing
+func (c *Client) ConsumeSharedChatQueue(consumerTag string) (<-chan amqp.Delivery, error) {
+	queueName := "chat.messages"
+
+	msgs, err := c.channel.Consume(
+		queueName,   // queue
+		consumerTag, // consumer tag
+		false,       // auto-ack (we'll manually ack for reliability)
+		false,       // exclusive
+		false,       // no-local
+		false,       // no-wait
+		nil,         // args
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start consuming from shared queue: %w", err)
+	}
+
+	return msgs, nil
+}
+
+// DeclarePresenceQueue declares a shared queue for presence events
+func (c *Client) DeclarePresenceQueue() error {
+	queueName := "presence.events"
+
+	// Declare queue
+	_, err := c.channel.QueueDeclare(
+		queueName, // name
+		true,      // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		nil,       // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("failed to declare presence queue: %w", err)
+	}
+
+	return nil
+}
+
+// DeclareReadReceiptQueue declares a shared queue for read receipts
+func (c *Client) DeclareReadReceiptQueue() error {
+	queueName := "read.receipts"
+
+	// Declare queue for batching read receipts
+	_, err := c.channel.QueueDeclare(
+		queueName, // name
+		true,      // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		nil,       // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("failed to declare read receipt queue: %w", err)
+	}
+
+	return nil
+}
+
+// PublishPresenceEvent publishes a presence update
+func (c *Client) PublishPresenceEvent(ctx context.Context, body []byte) error {
+	err := c.channel.PublishWithContext(
+		ctx,
+		"presence.fanout", // exchange
+		"",                // routing key (ignored for fanout)
+		false,             // mandatory
+		false,             // immediate
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: amqp.Transient, // Don't persist presence events
+			Timestamp:    time.Now(),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to publish presence event: %w", err)
+	}
+
+	return nil
+}
+
+// PublishReadReceipt publishes a read receipt to the queue
+func (c *Client) PublishReadReceipt(ctx context.Context, body []byte) error {
+	err := c.channel.PublishWithContext(
+		ctx,
+		"",              // exchange (empty = default)
+		"read.receipts", // routing key (queue name)
+		false,           // mandatory
+		false,           // immediate
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: amqp.Persistent,
+			Timestamp:    time.Now(),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to publish read receipt: %w", err)
+	}
+
+	return nil
+}
+
+// ConsumePresenceQueue starts consuming from the presence queue
+func (c *Client) ConsumePresenceQueue(consumerTag string) (<-chan amqp.Delivery, error) {
+	queueName := "presence.events"
+
+	msgs, err := c.channel.Consume(
+		queueName,   // queue
+		consumerTag, // consumer tag
+		false,       // auto-ack
+		false,       // exclusive
+		false,       // no-local
+		false,       // no-wait
+		nil,         // args
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to consume presence queue: %w", err)
+	}
+
+	return msgs, nil
+}
+
+// ConsumeReadReceiptQueue starts consuming from the read receipt queue
+func (c *Client) ConsumeReadReceiptQueue(consumerTag string) (<-chan amqp.Delivery, error) {
+	queueName := "read.receipts"
+
+	msgs, err := c.channel.Consume(
+		queueName,   // queue
+		consumerTag, // consumer tag
+		false,       // auto-ack
+		false,       // exclusive
+		false,       // no-local
+		false,       // no-wait
+		nil,         // args
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to consume read receipt queue: %w", err)
 	}
 
 	return msgs, nil
