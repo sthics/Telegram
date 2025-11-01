@@ -203,6 +203,15 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# Project structure
-/scripts/
-/docs/
+# Test files and guides
+BEGINNER_GUIDE.md
+HOWTO_TEST.md
+SYSTEM_WORKING.md
+TEST_RESULTS.md
+test_messaging.sh
+test_websocket.py
+test_ws_client.go
+
+# Documentation and scripts (not tracked)
+docs/
+scripts/

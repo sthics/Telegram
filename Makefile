@@ -1,5 +1,11 @@
 .PHONY: help build test run clean docker migrate proto
 
+# Include environment variables from .env file if it exists
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
+
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
@@ -19,13 +25,13 @@ coverage: test ## Generate coverage report
 	@echo "Coverage report generated: coverage.html"
 
 run-gateway: ## Run gateway service
-	go run cmd/gateway/main.go
+	go run ./cmd/gateway
 
 run-chat: ## Run chat service
-	go run cmd/chat-svc/main.go
+	go run ./cmd/chat-svc
 
 run-presence: ## Run presence service
-	go run cmd/presence-svc/main.go
+	go run ./cmd/presence-svc
 
 docker-build: ## Build Docker images
 	docker build -f Dockerfile.gateway -t mini-telegram/gateway:latest .
