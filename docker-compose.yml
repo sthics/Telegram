@@ -49,6 +49,8 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    volumes:
+      - ./secrets:/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +66,8 @@ services:
       dockerfile: Dockerfile.chat-svc
     env_file:
       - .env
+    volumes:
+      - ./secrets:/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,6 +85,8 @@ services:
       dockerfile: Dockerfile.presence-svc
     env_file:
       - .env
+    volumes:
+      - ./secrets:/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
