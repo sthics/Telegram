@@ -85,6 +85,11 @@ func main() {
 	// Initialize gateway server
 	server := NewGatewayServer(cfg, authService, db, redisClient, rmqClient, hub)
 
+	// Start consumers
+	if err := server.StartConsumers(context.Background()); err != nil {
+		log.Fatal().Err(err).Msg("failed to start consumers")
+	}
+
 	// Create HTTP server
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),

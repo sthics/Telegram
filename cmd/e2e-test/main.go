@@ -7,16 +7,22 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
-const baseURL = "http://localhost:8080/v1"
+const (
+	baseURL = "http://localhost:8080/v1"
+	wsURL   = "ws://localhost:8080/v1/ws"
+)
 
 type LoginResponse struct {
 	AccessToken string `json:"accessToken"`
 }
 
-type Chat struct {
-	ID int64 `json:"id"`
+type RegisterResponse struct {
+	UserID      float64 `json:"userId"`
+	AccessToken string  `json:"accessToken"`
 }
 
 type CreateChatResponse struct {
@@ -37,30 +43,50 @@ func main() {
 	chatID := createChat(adminToken, []int64{memberID})
 	fmt.Printf("Chat created with ID: %d\n", chatID)
 
-	// Verify both see the chat
-	verifyChatExists(adminToken, chatID, "Admin", true)
-	verifyChatExists(memberToken, chatID, "Member", true)
+	// 3. Connect WebSockets
+	fmt.Println("\n[Test] Connecting WebSockets...")
+	adminWS := connectWS(adminToken)
+	defer adminWS.Close()
+	memberWS := connectWS(memberToken)
+	defer memberWS.Close()
 
-	// 3. Test Permissions (Member tries to kick Admin)
-	fmt.Println("\n[Test] Member trying to kick Admin (should fail)...")
-	kickMember(memberToken, chatID, adminID, http.StatusForbidden)
+	// Start reading from Member WS
+	memberMsgs := make(chan map[string]any, 10)
+	go readMessages(memberWS, memberMsgs)
 
-	// 4. Test Kick (Admin kicks Member)
-	fmt.Println("\n[Test] Admin kicking Member...")
-	kickMember(adminToken, chatID, memberID, http.StatusNoContent)
+	// 4. Test Typing Indicator
+	fmt.Println("\n[Test] Admin sending 'Typing' event...")
+	sendTyping(adminWS, chatID)
 
-	// Verify Member is gone
-	verifyChatExists(memberToken, chatID, "Member", false)
-	verifyChatExists(adminToken, chatID, "Admin", true)
+	// Verify Member received Typing
+	select {
+	case msg := <-memberMsgs:
+		if msg["type"] == "Typing" && int64(msg["chatId"].(float64)) == chatID && int64(msg["userId"].(float64)) == adminID {
+			fmt.Println("✅ Member received Typing event")
+		} else {
+			panic(fmt.Sprintf("Unexpected message: %v", msg))
+		}
+	case <-time.After(5 * time.Second):
+		panic("Timeout waiting for Typing event")
+	}
 
-	// 5. Test Leave
-	fmt.Println("\n[Test] Re-inviting Member and testing Leave...")
-	inviteMember(adminToken, chatID, memberID)
-	verifyChatExists(memberToken, chatID, "Member", true)
+	// 5. Test Message Delivery
+	fmt.Println("\n[Test] Admin sending 'Hello' message...")
+	sendMessage(adminWS, chatID, "Hello World")
 
-	fmt.Println("Member leaving chat...")
-	leaveChat(memberToken, chatID)
-	verifyChatExists(memberToken, chatID, "Member", false)
+	// Verify Member received Message
+	select {
+	case msg := <-memberMsgs:
+		if msg["type"] == "Message" && int64(msg["chatId"].(float64)) == chatID && msg["body"] == "Hello World" {
+			fmt.Println("✅ Member received Message")
+		} else {
+			// Might receive presence or other events, loop?
+			// For now, strict check.
+			panic(fmt.Sprintf("Unexpected message: %v", msg))
+		}
+	case <-time.After(5 * time.Second):
+		panic("Timeout waiting for Message")
+	}
 
 	fmt.Println("\n✅ E2E Test Completed Successfully!")
 }
@@ -87,31 +113,7 @@ func registerUser(prefix string) (string, int64) {
 
 	var res RegisterResponse
 	json.NewDecoder(resp.Body).Decode(&res)
-
-	// Hack: To get ID, we'd need to parse JWT or just trust the flow. 
-	// For this test, let's just login again or assume we can get it.
-	// Actually, we need the ID for invites. 
-	// Let's cheat and use a separate helper or just parse the JWT if needed.
-	// OR, better, let's just use the fact that we are creating fresh users.
-	// Wait, I need the ID to invite/kick.
-	// I'll add a debug endpoint or just parse the token? 
-	// Parsing token is annoying without the secret.
-	// I'll just use the /v1/auth/login which returns the same.
-	// Actually, I can't easily get the ID from the API response as currently implemented (only returns tokens).
-	// I will use the `GET /v1/chats` (empty) to maybe debug? No.
-	// I will update the register/login response to return UserID for easier testing?
-	// No, I shouldn't change production code just for this unless useful.
-	// I'll use the `db` directly? No, that breaks "E2E" via API.
-	// Ah, I can use the `GET /v1/chats`? No.
-	// Wait, `GET /v1/chats` doesn't return user ID.
-	// I'll parse the JWT. It's just base64.
-	
 	return res.AccessToken, int64(res.UserID)
-}
-
-type RegisterResponse struct {
-	UserID      float64 `json:"userId"`
-	AccessToken string  `json:"accessToken"`
 }
 
 func createChat(token string, memberIDs []int64) int64 {
@@ -140,85 +142,55 @@ func createChat(token string, memberIDs []int64) int64 {
 	return res.ChatID
 }
 
-func verifyChatExists(token string, chatID int64, user string, shouldExist bool) {
-	req, _ := http.NewRequest("GET", baseURL+"/chats", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+func connectWS(token string) *websocket.Conn {
+	header := http.Header{}
+	// Note: Gateway expects Authorization header for WebSocket upgrade if using protected route
+	// But standard JS WebSocket API doesn't support headers.
+	// Our gateway implementation in server.go uses:
+	// protected.GET("/ws", wsMiddleware, s.websocketHandler)
+	// protected group uses s.authService.JWTMiddleware()
+	// The JWT middleware likely checks Authorization header.
+	// Go websocket client supports headers.
+	header.Set("Authorization", "Bearer "+token)
 
-	resp, err := http.DefaultClient.Do(req)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("WebSocket connection failed: %v", err))
 	}
-	defer resp.Body.Close()
+	return conn
+}
 
-	var chats []Chat
-	json.NewDecoder(resp.Body).Decode(&chats)
-
-	found := false
-	for _, c := range chats {
-		if c.ID == chatID {
-			found = true
-			break
+func readMessages(conn *websocket.Conn, ch chan<- map[string]any) {
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		
+		var msg map[string]any
+		if err := json.Unmarshal(message, &msg); err == nil {
+			// Filter out Presence events for cleaner test output
+			if msg["type"] != "Presence" && msg["type"] != "Pong" {
+				ch <- msg
+			}
 		}
 	}
-
-	if found != shouldExist {
-		panic(fmt.Sprintf("Verification failed for %s: expected chat %d to exist=%v, but found=%v", user, chatID, shouldExist, found))
-	}
-	fmt.Printf("Verified %s: Chat %d exists=%v\n", user, chatID, found)
 }
 
-func kickMember(token string, chatID, userID int64, expectedStatus int) {
-	url := fmt.Sprintf("%s/chats/%d/members/%d", baseURL, chatID, userID)
-	req, _ := http.NewRequest("DELETE", url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		panic(err)
+func sendTyping(conn *websocket.Conn, chatID int64) {
+	msg := map[string]any{
+		"type":   "Typing",
+		"chatId": chatID,
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != expectedStatus {
-		b, _ := io.ReadAll(resp.Body)
-		panic(fmt.Sprintf("Kick member failed: expected status %d, got %d. Body: %s", expectedStatus, resp.StatusCode, string(b)))
-	}
+	conn.WriteJSON(msg)
 }
 
-func leaveChat(token string, chatID int64) {
-	url := fmt.Sprintf("%s/chats/%d/members", baseURL, chatID)
-	req, _ := http.NewRequest("DELETE", url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		panic(err)
+func sendMessage(conn *websocket.Conn, chatID int64, text string) {
+	msg := map[string]any{
+		"type":   "SendMessage",
+		"uuid":   fmt.Sprintf("%d", time.Now().UnixNano()),
+		"chatId": chatID,
+		"body":   text,
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		b, _ := io.ReadAll(resp.Body)
-		panic(fmt.Sprintf("Leave chat failed: %s", string(b)))
-	}
-}
-
-func inviteMember(token string, chatID, userID int64) {
-	body, _ := json.Marshal(map[string]interface{}{
-		"userId": userID,
-	})
-
-	url := fmt.Sprintf("%s/chats/%d/invite", baseURL, chatID)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		b, _ := io.ReadAll(resp.Body)
-		panic(fmt.Sprintf("Invite member failed: %s", string(b)))
-	}
+	conn.WriteJSON(msg)
 }

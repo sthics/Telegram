@@ -35,6 +35,7 @@ type GatewayServer struct {
 	hub         *websocket.Hub
 	upgrader    gorillaws.Upgrader
 	metrics     *Metrics
+	deliveryQ   string
 }
 
 // Metrics holds Prometheus metrics
@@ -500,6 +501,22 @@ func (s *GatewayServer) websocketHandler(c *gin.Context) {
 	s.hub.Register(handler)
 	s.metrics.wsConns.Set(float64(s.hub.Count()))
 
+	// Subscribe to chats and bind delivery queue
+	// This ensures we receive messages for this user's chats
+	userChats, err := s.db.GetUserChats(context.Background(), userID)
+	if err == nil {
+		for _, chat := range userChats {
+			s.hub.Subscribe(userID, chat.ID)
+			if s.deliveryQ != "" {
+				if err := s.rabbitmq.BindDeliveryQueue(s.deliveryQ, chat.ID); err != nil {
+					log.Error().Err(err).Int64("chat_id", chat.ID).Msg("failed to bind delivery queue")
+				}
+			}
+		}
+	} else {
+		log.Error().Err(err).Msg("failed to get user chats for subscription")
+	}
+
 	// Register in Redis
 	ctx := context.Background()
 	podIP := os.Getenv("POD_IP")
@@ -538,6 +555,12 @@ func (s *GatewayServer) websocketHandler(c *gin.Context) {
 
 	// Cleanup
 	s.hub.Unregister(userID, device)
+	// Unsubscribe from chats
+	if userChats, err := s.db.GetUserChats(context.Background(), userID); err == nil {
+		for _, chat := range userChats {
+			s.hub.Unsubscribe(userID, chat.ID)
+		}
+	}
 	s.metrics.wsConns.Set(float64(s.hub.Count()))
 
 	if err := s.redis.UnregisterConnection(ctx, userID, device); err != nil {
@@ -578,6 +601,8 @@ func (s *GatewayServer) handleWebSocketMessage(handler *websocket.Handler, messa
 		return s.handleSendMessage(handler, msg)
 	case "Read":
 		return s.handleReadReceipt(handler, msg)
+	case "Typing":
+		return s.handleTypingEvent(handler, msg)
 	case "Ping":
 		return handler.SendJSON(map[string]any{"type": "Pong", "timestamp": time.Now().Unix()})
 	default:
@@ -643,6 +668,75 @@ func (s *GatewayServer) handleReadReceipt(handler *websocket.Handler, msg map[st
 		Int64("msg_id", int64(msgID)).
 		Int64("user_id", handler.UserID()).
 		Msg("read receipt published")
+
+	return nil
+}
+
+// handleTypingEvent processes Typing events
+func (s *GatewayServer) handleTypingEvent(handler *websocket.Handler, msg map[string]any) error {
+	chatID, _ := msg["chatId"].(float64)
+	if chatID == 0 {
+		return fmt.Errorf("invalid typing event fields")
+	}
+
+	// Publish ephemeral event
+	payload, _ := json.Marshal(map[string]any{
+		"type":   "Typing",
+		"chatId": int64(chatID),
+		"userId": handler.UserID(),
+	})
+
+	if err := s.rabbitmq.PublishTypingEvent(context.Background(), int64(chatID), payload); err != nil {
+		return fmt.Errorf("failed to publish typing event: %w", err)
+	}
+
+	return nil
+}
+
+// StartConsumers starts consuming from RabbitMQ
+func (s *GatewayServer) StartConsumers(ctx context.Context) error {
+	// Declare a unique delivery queue for this pod
+	podName := os.Getenv("POD_NAME")
+	if podName == "" {
+		podName = fmt.Sprintf("gateway-%d", time.Now().UnixNano())
+	}
+	
+	// We start with no bindings, they will be added as users connect
+	queueName, err := s.rabbitmq.DeclareDeliveryQueue(podName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to declare delivery queue: %w", err)
+	}
+	s.deliveryQ = queueName
+	
+	log.Info().Str("queue", queueName).Msg("started delivery consumer")
+
+	msgs, err := s.rabbitmq.ConsumeDeliveryQueue(queueName, podName)
+	if err != nil {
+		return fmt.Errorf("failed to start consuming delivery queue: %w", err)
+	}
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case d, ok := <-msgs:
+				if !ok {
+					return
+				}
+				
+				// Broadcast to local subscribers
+				var payload map[string]any
+				if err := json.Unmarshal(d.Body, &payload); err == nil {
+					if chatID, ok := payload["chatId"].(float64); ok {
+						s.hub.BroadcastToChat(int64(chatID), d.Body)
+					}
+				}
+				
+				d.Ack(false)
+			}
+		}
+	}()
 
 	return nil
 }

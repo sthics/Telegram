@@ -9,6 +9,7 @@ import (
 // Hub manages active WebSocket connections
 type Hub struct {
 	connections map[int64]map[string]*Handler // userID -> device -> handler
+	chatSubs    map[int64]map[int64]bool      // chatID -> userID -> true
 	mu          sync.RWMutex
 	logger      zerolog.Logger
 }
@@ -17,6 +18,7 @@ type Hub struct {
 func NewHub(logger zerolog.Logger) *Hub {
 	return &Hub{
 		connections: make(map[int64]map[string]*Handler),
+		chatSubs:    make(map[int64]map[int64]bool),
 		logger:      logger,
 	}
 }
@@ -146,4 +148,52 @@ func (h *Hub) GetConnectedUserIDs() []int64 {
 		userIDs = append(userIDs, userID)
 	}
 	return userIDs
+}
+
+// Subscribe adds a user to a chat subscription
+func (h *Hub) Subscribe(userID, chatID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.chatSubs[chatID] == nil {
+		h.chatSubs[chatID] = make(map[int64]bool)
+	}
+	h.chatSubs[chatID][userID] = true
+}
+
+// Unsubscribe removes a user from a chat subscription
+func (h *Hub) Unsubscribe(userID, chatID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if subs, ok := h.chatSubs[chatID]; ok {
+		delete(subs, userID)
+		if len(subs) == 0 {
+			delete(h.chatSubs, chatID)
+		}
+	}
+}
+
+// BroadcastToChat sends a message to all connected members of a chat
+func (h *Hub) BroadcastToChat(chatID int64, message []byte) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	subs, ok := h.chatSubs[chatID]
+	if !ok {
+		return 0
+	}
+
+	sent := 0
+	for userID := range subs {
+		// Send to all devices of this user
+		if devices, ok := h.connections[userID]; ok {
+			for _, handler := range devices {
+				if err := handler.Send(message); err == nil {
+					sent++
+				}
+			}
+		}
+	}
+	return sent
 }

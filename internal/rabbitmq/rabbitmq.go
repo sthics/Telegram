@@ -346,6 +346,30 @@ func (c *Client) PublishPresenceEvent(ctx context.Context, body []byte) error {
 	return nil
 }
 
+// PublishTypingEvent publishes a typing indicator event
+func (c *Client) PublishTypingEvent(ctx context.Context, chatID int64, body []byte) error {
+	routingKey := fmt.Sprintf("%d", chatID)
+
+	err := c.channel.PublishWithContext(
+		ctx,
+		"delivery.topic", // exchange
+		routingKey,       // routing key
+		false,            // mandatory
+		false,            // immediate
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: amqp.Transient, // Transient for ephemeral events
+			Timestamp:    time.Now(),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to publish typing event: %w", err)
+	}
+
+	return nil
+}
+
 // PublishReadReceipt publishes a read receipt to the queue
 func (c *Client) PublishReadReceipt(ctx context.Context, body []byte) error {
 	err := c.channel.PublishWithContext(
@@ -439,6 +463,21 @@ func (c *Client) DeclareDeliveryQueue(podID string, chatIDs []int64) (string, er
 	}
 
 	return queueName, nil
+}
+
+// BindDeliveryQueue binds a delivery queue to a chat ID
+func (c *Client) BindDeliveryQueue(queueName string, chatID int64) error {
+	routingKey := fmt.Sprintf("%d", chatID)
+	if err := c.channel.QueueBind(
+		queueName,        // queue name
+		routingKey,       // routing key
+		"delivery.topic", // exchange
+		false,            // no-wait
+		nil,              // arguments
+	); err != nil {
+		return fmt.Errorf("failed to bind delivery queue: %w", err)
+	}
+	return nil
 }
 
 // ConsumeDeliveryQueue starts consuming from a delivery queue
