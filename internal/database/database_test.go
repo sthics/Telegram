@@ -25,15 +25,22 @@ func TestChatModel(t *testing.T) {
 }
 
 func TestMessageModel(t *testing.T) {
+	replyTo := int64(100)
 	msg := &Message{
-		ChatID: 1,
-		UserID: 2,
-		Body:   "Hello, World!",
+		ChatID:    1,
+		UserID:    2,
+		Body:      "Hello, World!",
+		MediaURL:  "http://example.com/image.jpg",
+		ReplyToID: &replyTo,
+		Reactions: []byte(`{"like": 1}`),
 	}
 
 	assert.Equal(t, int64(1), msg.ChatID)
 	assert.Equal(t, int64(2), msg.UserID)
 	assert.Equal(t, "Hello, World!", msg.Body)
+	assert.Equal(t, "http://example.com/image.jpg", msg.MediaURL)
+	assert.Equal(t, int64(100), *msg.ReplyToID)
+	assert.JSONEq(t, `{"like": 1}`, string(msg.Reactions))
 }
 
 func TestReceiptConstants(t *testing.T) {
@@ -45,6 +52,18 @@ func TestReceiptConstants(t *testing.T) {
 func TestChatTypeConstants(t *testing.T) {
 	assert.Equal(t, int16(1), int16(ChatTypeDirect))
 	assert.Equal(t, int16(2), int16(ChatTypeGroup))
+}
+
+func TestChatMemberRole(t *testing.T) {
+	member := &ChatMember{
+		ChatID: 1,
+		UserID: 1,
+		Role:   RoleAdmin,
+	}
+	assert.Equal(t, RoleAdmin, member.Role)
+	
+	member.Role = RoleMember
+	assert.Equal(t, RoleMember, member.Role)
 }
 
 // Integration tests would go here using testcontainers

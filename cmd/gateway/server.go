@@ -121,6 +121,8 @@ func (s *GatewayServer) Router() *gin.Engine {
 		protected.GET("/chats", s.getChatsHandler)
 		protected.POST("/chats", s.createChatHandler)
 		protected.POST("/chats/:id/invite", s.inviteToChatHandler)
+		protected.DELETE("/chats/:id/members/:userId", s.kickMemberHandler)
+		protected.DELETE("/chats/:id/members", s.leaveChatHandler)
 
 		// WebSocket
 		wsRate := limiter.Rate{
@@ -192,6 +194,7 @@ func (s *GatewayServer) registerHandler(c *gin.Context) {
 	c.SetCookie("refreshToken", refreshToken, int(auth.RefreshTokenLifetime.Seconds()), "/", "", true, true)
 
 	c.JSON(http.StatusCreated, gin.H{
+		"userId":       user.ID,
 		"accessToken":  accessToken,
 		"refreshToken": refreshToken,
 	})
@@ -242,6 +245,7 @@ func (s *GatewayServer) loginHandler(c *gin.Context) {
 	c.SetCookie("refreshToken", refreshToken, int(auth.RefreshTokenLifetime.Seconds()), "/", "", true, true)
 
 	c.JSON(http.StatusOK, gin.H{
+		"userId":       user.ID,
 		"accessToken":  accessToken,
 		"refreshToken": refreshToken,
 	})
@@ -333,9 +337,15 @@ func (s *GatewayServer) createChatHandler(c *gin.Context) {
 	allMembers := append([]int64{userID}, req.MemberIDs...)
 
 	for _, memberID := range allMembers {
+		role := database.RoleMember
+		if memberID == userID {
+			role = database.RoleAdmin
+		}
+		
 		member := &database.ChatMember{
 			ChatID: chat.ID,
 			UserID: memberID,
+			Role:   role,
 		}
 		if err := s.db.AddChatMember(ctx, member); err != nil {
 			log.Error().Err(err).Int64("chat_id", chat.ID).Int64("user_id", memberID).Msg("failed to add chat member")
@@ -387,6 +397,82 @@ func (s *GatewayServer) inviteToChatHandler(c *gin.Context) {
 
 	// Update Redis cache
 	if err := s.redis.AddGroupMembers(ctx, chatID, []int64{req.UserID}); err != nil {
+		log.Error().Err(err).Msg("failed to update group members cache")
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// kickMemberHandler removes a member from a chat (admin only)
+func (s *GatewayServer) kickMemberHandler(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	targetUserID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
+
+	requesterID, _ := auth.GetUserID(c)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), s.cfg.PostgresTimeout)
+	defer cancel()
+
+	// Check if requester is admin
+	requesterMember, err := s.db.GetChatMember(ctx, chatID, requesterID)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not a member of this chat"})
+		return
+	}
+
+	if requesterMember.Role != database.RoleAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only admins can kick members"})
+		return
+	}
+
+	// Remove member
+	if err := s.db.RemoveChatMember(ctx, chatID, targetUserID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove member"})
+		return
+	}
+
+	// Update Redis cache (remove from group members)
+	// Note: This is a simplification. Ideally we should fetch current members, remove one, and set back.
+	// For now, we'll just invalidate the cache or let it expire.
+	// A better approach for Redis set would be SREM.
+	// Assuming AddGroupMembers uses SADD, we should implement RemoveGroupMember using SREM.
+	if err := s.redis.RemoveGroupMember(ctx, chatID, targetUserID); err != nil {
+		log.Error().Err(err).Msg("failed to update group members cache")
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// leaveChatHandler allows a user to leave a chat
+func (s *GatewayServer) leaveChatHandler(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	userID, _ := auth.GetUserID(c)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), s.cfg.PostgresTimeout)
+	defer cancel()
+
+	// Remove self
+	if err := s.db.RemoveChatMember(ctx, chatID, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to leave chat"})
+		return
+	}
+
+	// Update Redis cache
+	if err := s.redis.RemoveGroupMember(ctx, chatID, userID); err != nil {
 		log.Error().Err(err).Msg("failed to update group members cache")
 	}
 

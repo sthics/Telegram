@@ -20,9 +20,19 @@ type Chat struct {
 }
 
 // ChatMember represents membership in a chat
+// Role represents a user's role in a chat
+type Role string
+
+const (
+	RoleAdmin  Role = "admin"
+	RoleMember Role = "member"
+)
+
+// ChatMember represents membership in a chat
 type ChatMember struct {
 	ChatID        int64     `gorm:"primaryKey" json:"chat_id"`
 	UserID        int64     `gorm:"primaryKey" json:"user_id"`
+	Role          Role      `gorm:"default:'member'" json:"role"`
 	LastReadMsgID int64     `gorm:"default:0" json:"last_read_msg_id"`
 	JoinedAt      time.Time `gorm:"default:now()" json:"joined_at"`
 }
@@ -33,6 +43,9 @@ type Message struct {
 	ChatID    int64     `gorm:"not null;index:idx_messages_chat_created" json:"chat_id"`
 	UserID    int64     `gorm:"not null" json:"user_id"`
 	Body      string    `gorm:"not null" json:"body"`
+	MediaURL  string    `json:"media_url,omitempty"`
+	ReplyToID *int64    `json:"reply_to_id,omitempty"`
+	Reactions []byte    `gorm:"type:jsonb;default:'{}'" json:"reactions"`
 	CreatedAt time.Time `gorm:"default:now();index:idx_messages_chat_created" json:"created_at"`
 }
 

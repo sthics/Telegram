@@ -171,6 +171,27 @@ func (db *DB) AddChatMember(ctx context.Context, member *ChatMember) error {
 	return nil
 }
 
+// RemoveChatMember removes a member from a chat
+func (db *DB) RemoveChatMember(ctx context.Context, chatID, userID int64) error {
+	if err := db.WithContext(ctx).
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		Delete(&ChatMember{}).Error; err != nil {
+		return fmt.Errorf("failed to remove chat member: %w", err)
+	}
+	return nil
+}
+
+// GetChatMember retrieves a specific chat member
+func (db *DB) GetChatMember(ctx context.Context, chatID, userID int64) (*ChatMember, error) {
+	var member ChatMember
+	if err := db.WithContext(ctx).
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		First(&member).Error; err != nil {
+		return nil, fmt.Errorf("failed to get chat member: %w", err)
+	}
+	return &member, nil
+}
+
 // GetUserChats retrieves all chats for a user
 func (db *DB) GetUserChats(ctx context.Context, userID int64) ([]Chat, error) {
 	var chats []Chat
