@@ -370,6 +370,30 @@ func (c *Client) PublishTypingEvent(ctx context.Context, chatID int64, body []by
 	return nil
 }
 
+// PublishReadReceiptBroadcast publishes a read receipt to the delivery exchange for broadcasting
+func (c *Client) PublishReadReceiptBroadcast(ctx context.Context, chatID int64, body []byte) error {
+	routingKey := fmt.Sprintf("%d", chatID)
+
+	err := c.channel.PublishWithContext(
+		ctx,
+		"delivery.topic", // exchange
+		routingKey,       // routing key
+		false,            // mandatory
+		false,            // immediate
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: amqp.Transient, // Transient for ephemeral events
+			Timestamp:    time.Now(),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to publish read receipt broadcast: %w", err)
+	}
+
+	return nil
+}
+
 // PublishReadReceipt publishes a read receipt to the queue
 func (c *Client) PublishReadReceipt(ctx context.Context, body []byte) error {
 	err := c.channel.PublishWithContext(

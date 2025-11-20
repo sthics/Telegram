@@ -51,6 +51,11 @@ func main() {
 	}
 	defer db.Close()
 
+	// Run auto-migration
+	if err := db.AutoMigrate(); err != nil {
+		log.Fatal().Err(err).Msg("failed to run auto-migration")
+	}
+
 	redisClient, err := redis.New(redis.Config{
 		Addr:     cfg.RedisAddr,
 		Password: cfg.RedisPassword,

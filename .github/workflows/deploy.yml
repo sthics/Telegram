@@ -70,21 +70,46 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/telegram/presence-svc:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/telegram/presence-svc:latest
 
-  # deploy:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #   steps:
-  #     - name: Deploy to k3s
-  #       uses: appleboy/ssh-action@v0.1.5
-  #       with:
-  #         host: ${{ secrets.K3S_HOST }}
-  #         username: ubuntu
-  #         key: ${{ secrets.K3S_KEY }}
-  #         script: |
-  #           kubectl set image deployment/gateway \
-  #             gateway=ghcr.io/${{ github.repository }}/gateway:${{ github.sha }}
-  #           kubectl set image deployment/chat-svc \
-  #             chat-svc=ghcr.io/${{ github.repository }}/chat-svc:${{ github.sha }}
-  #           kubectl set image deployment/presence-svc \
-  #             presence-svc=ghcr.io/${{ github.repository }}/presence-svc:${{ github.sha }}
+      - name: Build and push push-svc
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.push-svc
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/telegram/push-svc:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/telegram/push-svc:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Copy compose files to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "docker-compose.yml,docker-compose.prod.yml"
+          target: "~/app"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/app
+            # Login to GHCR
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Pull latest images
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            
+            # Restart services
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+            
+            # Prune old images to save space
+            docker image prune -f

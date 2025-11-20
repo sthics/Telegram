@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # Infrastructure
+  postgres:
+    restart: always
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+
+  redis:
+    restart: always
+    volumes:
+      - ./data/redis:/data
+
+  rabbitmq:
+    restart: always
+    volumes:
+      - ./data/rabbitmq:/var/lib/rabbitmq
+
+  # Services
+  gateway:
+    restart: always
+    environment:
+      - GIN_MODE=release
+
+  chat-svc:
+    restart: always
+    deploy:
+      replicas: 2
+
+  presence-svc:
+    restart: always
+
+  push-svc:
+    restart: always
+
+  # Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - gateway
+    restart: always
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  # Certbot for SSL
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"

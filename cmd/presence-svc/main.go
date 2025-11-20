@@ -260,6 +260,18 @@ func (s *PresenceService) processBatch(ctx context.Context, receipts []ReadRecei
 		if err := s.db.UpdateLastReadMessage(ctx, receipt.ChatID, receipt.UserID, receipt.MsgID); err != nil {
 			logger.Warn().Err(err).Msg("failed to update last read message")
 		}
+
+		// Broadcast read receipt to chat members
+		payload, _ := json.Marshal(map[string]any{
+			"type":   "Read",
+			"chatId": receipt.ChatID,
+			"userId": receipt.UserID,
+			"msgId":  receipt.MsgID,
+		})
+
+		if err := s.rabbitmq.PublishReadReceiptBroadcast(ctx, receipt.ChatID, payload); err != nil {
+			logger.Warn().Err(err).Msg("failed to broadcast read receipt")
+		}
 	}
 
 	duration := time.Since(start)

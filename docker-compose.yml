@@ -96,6 +96,23 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  push-svc:
+    build:
+      context: .
+      dockerfile: Dockerfile.push-svc
+    env_file:
+      - .env
+    volumes:
+      - ./secrets:/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     ports:

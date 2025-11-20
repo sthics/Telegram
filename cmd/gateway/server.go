@@ -124,6 +124,7 @@ func (s *GatewayServer) Router() *gin.Engine {
 		protected.POST("/chats/:id/invite", s.inviteToChatHandler)
 		protected.DELETE("/chats/:id/members/:userId", s.kickMemberHandler)
 		protected.DELETE("/chats/:id/members", s.leaveChatHandler)
+		protected.POST("/devices", s.registerDeviceHandler)
 
 		// WebSocket
 		wsRate := limiter.Rate{
@@ -480,6 +481,38 @@ func (s *GatewayServer) leaveChatHandler(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// registerDeviceHandler registers a device token for push notifications
+func (s *GatewayServer) registerDeviceHandler(c *gin.Context) {
+	userID, _ := auth.GetUserID(c)
+
+	var req struct {
+		Token    string `json:"token" binding:"required"`
+		Platform string `json:"platform" binding:"required,oneof=ios android web"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), s.cfg.PostgresTimeout)
+	defer cancel()
+
+	token := &database.DeviceToken{
+		UserID:   userID,
+		Token:    req.Token,
+		Platform: req.Platform,
+	}
+
+	if err := s.db.AddDeviceToken(ctx, token); err != nil {
+		log.Error().Err(err).Int64("user_id", userID).Msg("failed to register device token")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register device"})
+		return
+	}
+
+	c.Status(http.StatusCreated)
+}
+
 // websocketHandler handles WebSocket upgrade and connection
 func (s *GatewayServer) websocketHandler(c *gin.Context) {
 	userID, _ := auth.GetUserID(c)
@@ -493,6 +526,7 @@ func (s *GatewayServer) websocketHandler(c *gin.Context) {
 		log.Error().Err(err).Msg("failed to upgrade connection")
 		return
 	}
+	log.Info().Int64("user_id", userID).Msg("websocket connection upgraded")
 
 	// Create handler
 	handler := websocket.NewHandler(conn, userID, device, log.Logger)
@@ -500,6 +534,7 @@ func (s *GatewayServer) websocketHandler(c *gin.Context) {
 	// Register connection
 	s.hub.Register(handler)
 	s.metrics.wsConns.Set(float64(s.hub.Count()))
+	log.Info().Int64("user_id", userID).Msg("websocket handler registered")
 
 	// Subscribe to chats and bind delivery queue
 	// This ensures we receive messages for this user's chats
@@ -510,6 +545,8 @@ func (s *GatewayServer) websocketHandler(c *gin.Context) {
 			if s.deliveryQ != "" {
 				if err := s.rabbitmq.BindDeliveryQueue(s.deliveryQ, chat.ID); err != nil {
 					log.Error().Err(err).Int64("chat_id", chat.ID).Msg("failed to bind delivery queue")
+				} else {
+					log.Info().Int64("chat_id", chat.ID).Str("queue", s.deliveryQ).Msg("bound delivery queue to chat")
 				}
 			}
 		}

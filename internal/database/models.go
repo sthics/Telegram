@@ -69,3 +69,11 @@ const (
 	ChatTypeDirect = 1
 	ChatTypeGroup  = 2
 )
+
+// DeviceToken represents a user's device for push notifications
+type DeviceToken struct {
+	UserID    int64     `gorm:"primaryKey" json:"user_id"`
+	Token     string    `gorm:"primaryKey" json:"token"`
+	Platform  string    `gorm:"not null" json:"platform"`
+	UpdatedAt time.Time `gorm:"default:now()" json:"updated_at"`
+}

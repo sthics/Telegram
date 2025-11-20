@@ -58,6 +58,7 @@ func (db *DB) AutoMigrate() error {
 		&ChatMember{},
 		&Message{},
 		&Receipt{},
+		&DeviceToken{},
 	)
 }
 
@@ -202,4 +203,19 @@ func (db *DB) GetUserChats(ctx context.Context, userID int64) ([]Chat, error) {
 		return nil, fmt.Errorf("failed to get user chats: %w", err)
 	}
 	return chats, nil
+}
+
+// AddDeviceToken adds or updates a device token
+func (db *DB) AddDeviceToken(ctx context.Context, token *DeviceToken) error {
+	return db.WithContext(ctx).Save(token).Error
+}
+
+// GetDeviceTokens retrieves all device tokens for a user
+func (db *DB) GetDeviceTokens(ctx context.Context, userID int64) ([]string, error) {
+	var tokens []string
+	err := db.WithContext(ctx).
+		Model(&DeviceToken{}).
+		Where("user_id = ?", userID).
+		Pluck("token", &tokens).Error
+	return tokens, err
 }
