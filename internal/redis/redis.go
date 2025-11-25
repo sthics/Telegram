@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -27,6 +28,11 @@ func New(cfg Config) (*Client, error) {
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	})
+
+	// Enable tracing
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		return nil, fmt.Errorf("failed to instrument redis with tracing: %w", err)
+	}
 
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

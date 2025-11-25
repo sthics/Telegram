@@ -8,6 +8,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 // DB wraps gorm.DB
@@ -37,6 +38,10 @@ func New(cfg Config) (*DB, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	if err := db.Use(tracing.NewPlugin()); err != nil {
+		return nil, fmt.Errorf("failed to use tracing plugin: %w", err)
+	}
+
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sql.DB: %w", err)
@@ -48,18 +53,6 @@ func New(cfg Config) (*DB, error) {
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	return &DB{db}, nil
-}
-
-// AutoMigrate runs GORM auto-migration (dev only)
-func (db *DB) AutoMigrate() error {
-	return db.DB.AutoMigrate(
-		&User{},
-		&Chat{},
-		&ChatMember{},
-		&Message{},
-		&Receipt{},
-		&DeviceToken{},
-	)
 }
 
 // Close closes the database connection

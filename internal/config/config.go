@@ -38,6 +38,9 @@ type Config struct {
 	ConnTTL      time.Duration `envconfig:"CONN_TTL" default:"35s"`
 	PingInterval time.Duration `envconfig:"PING_INTERVAL" default:"30s"`
 
+	// Observability
+	OtelCollectorURL string `envconfig:"OTEL_COLLECTOR_URL" default:"localhost:4317"`
+
 	// Rate Limiting
 	LoginRateLimit int `envconfig:"LOGIN_RATE_LIMIT" default:"5"` // requests per minute per IP
 	WSRateLimit    int `envconfig:"WS_RATE_LIMIT" default:"20"`   // connections per minute per IP

@@ -3,21 +3,24 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/ambarg/mini-telegram/internal/auth"
 	"github.com/ambarg/mini-telegram/internal/config"
-	"github.com/ambarg/mini-telegram/internal/database"
+	httpHandler "github.com/ambarg/mini-telegram/internal/handler/http"
 	"github.com/ambarg/mini-telegram/internal/rabbitmq"
-	"github.com/ambarg/mini-telegram/internal/redis"
+	"github.com/ambarg/mini-telegram/internal/repository/postgres"
+	"github.com/ambarg/mini-telegram/internal/repository/redis"
+	authService "github.com/ambarg/mini-telegram/internal/service/auth"
+	chatService "github.com/ambarg/mini-telegram/internal/service/chat"
+	"github.com/ambarg/mini-telegram/internal/telemetry"
 	"github.com/ambarg/mini-telegram/internal/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func main() {
@@ -28,6 +31,18 @@ func main() {
 	// Load configuration
 	cfg := config.MustLoad()
 
+	// Initialize Tracer
+	shutdown, err := telemetry.InitTracer("gateway", cfg.OtelCollectorURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize tracer")
+	}
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			log.Error().Err(err).Msg("failed to shutdown tracer")
+		}
+	}()
+
+
 	// Set Gin mode
 	gin.SetMode(cfg.GinMode)
 
@@ -37,10 +52,8 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to load JWT private key")
 	}
 
-	// Initialize services
-	authService := auth.NewService(privateKey)
-
-	db, err := database.New(database.Config{
+	// Initialize Infrastructure (Repositories)
+	db, err := postgres.New(postgres.Config{
 		DSN:             cfg.DSN,
 		MaxOpenConns:    cfg.MaxOpenConns,
 		MaxIdleConns:    cfg.MaxIdleConns,
@@ -50,11 +63,6 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
 	defer db.Close()
-
-	// Run auto-migration
-	if err := db.AutoMigrate(); err != nil {
-		log.Fatal().Err(err).Msg("failed to run auto-migration")
-	}
 
 	redisClient, err := redis.New(redis.Config{
 		Addr:     cfg.RedisAddr,
@@ -79,32 +87,62 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to declare exchanges")
 	}
 
-	// Declare shared chat queue (best practice for scalable systems)
+	// Declare shared chat queue
 	if err := rmqClient.DeclareSharedChatQueue(); err != nil {
 		log.Fatal().Err(err).Msg("failed to declare shared chat queue")
 	}
 
+	// Initialize Repositories
+	userRepo := postgres.NewUserRepository(db)
+	chatRepo := postgres.NewChatRepository(db)
+	cacheRepo := redis.NewCacheRepository(redisClient)
+
+	// Initialize Services
+	authSvc := authService.NewService(userRepo, auth.NewService(privateKey))
+	chatSvc := chatService.NewService(chatRepo, cacheRepo, rmqClient)
+
+	// Initialize Handlers
+	authHandler := httpHandler.NewAuthHandler(authSvc)
+	chatHandler := httpHandler.NewChatHandler(chatSvc)
+
 	// Create WebSocket hub
-	hub := websocket.NewHub(log.Logger)
+	_ = websocket.NewHub(log.Logger) // Hub unused for now
 
-	// Initialize gateway server
-	server := NewGatewayServer(cfg, authService, db, redisClient, rmqClient, hub)
+	// Let's create the router here directly
+	r := gin.Default()
+	r.Use(otelgin.Middleware("gateway"))
 
-	// Start consumers
-	if err := server.StartConsumers(context.Background()); err != nil {
-		log.Fatal().Err(err).Msg("failed to start consumers")
+	// Health check
+	r.GET("/v1/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// Auth routes
+	authGroup := r.Group("/v1/auth")
+	{
+		authGroup.POST("/register", authHandler.Register)
+		authGroup.POST("/login", authHandler.Login)
+		authGroup.POST("/refresh", authHandler.Refresh)
 	}
 
-	// Create HTTP server
-	httpServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: server.Router(),
+	// Protected routes
+	protected := r.Group("/v1")
+	jwtMiddleware := auth.NewService(privateKey).JWTMiddleware()
+	protected.Use(jwtMiddleware)
+	{
+		// Chat routes
+		protected.GET("/chats", chatHandler.GetChats)
+		protected.POST("/chats", chatHandler.CreateChat)
+		protected.POST("/chats/:id/invite", chatHandler.InviteToChat)
+		protected.DELETE("/chats/:id/members/:userId", chatHandler.KickMember)
+		protected.DELETE("/chats/:id/members", chatHandler.LeaveChat)
+		protected.POST("/devices", chatHandler.RegisterDevice)
 	}
 
 	// Start server
 	go func() {
 		log.Info().Int("port", cfg.Port).Msg("starting gateway server")
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := r.Run(fmt.Sprintf(":%d", cfg.Port)); err != nil {
 			log.Fatal().Err(err).Msg("failed to start server")
 		}
 	}()
@@ -115,14 +153,4 @@ func main() {
 	<-quit
 
 	log.Info().Msg("shutting down server...")
-
-	// Graceful shutdown with 15 second timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Fatal().Err(err).Msg("server forced to shutdown")
-	}
-
-	log.Info().Msg("server exited")
 }

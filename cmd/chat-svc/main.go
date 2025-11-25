@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/ambarg/mini-telegram/internal/config"
-	"github.com/ambarg/mini-telegram/internal/database"
+	"github.com/ambarg/mini-telegram/internal/domain"
 	"github.com/ambarg/mini-telegram/internal/rabbitmq"
-	"github.com/ambarg/mini-telegram/internal/redis"
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/ambarg/mini-telegram/internal/repository/postgres"
+	"github.com/ambarg/mini-telegram/internal/repository/redis"
+	chatService "github.com/ambarg/mini-telegram/internal/service/chat"
+	"github.com/ambarg/mini-telegram/internal/telemetry"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -26,8 +28,19 @@ func main() {
 	// Load configuration
 	cfg := config.MustLoad()
 
-	// Initialize services
-	db, err := database.New(database.Config{
+	// Initialize Tracer
+	shutdown, err := telemetry.InitTracer("chat-svc", cfg.OtelCollectorURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize tracer")
+	}
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			log.Error().Err(err).Msg("failed to shutdown tracer")
+		}
+	}()
+
+	// Initialize Infrastructure
+	db, err := postgres.New(postgres.Config{
 		DSN:             cfg.DSN,
 		MaxOpenConns:    cfg.MaxOpenConns,
 		MaxIdleConns:    cfg.MaxIdleConns,
@@ -61,13 +74,17 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to declare exchanges")
 	}
 
-	// Declare shared chat queue (best practice for scalable systems)
+	// Declare shared chat queue
 	if err := rmqClient.DeclareSharedChatQueue(); err != nil {
 		log.Fatal().Err(err).Msg("failed to declare shared chat queue")
 	}
 
-	// Create chat service
-	svc := NewChatService(db, redisClient, rmqClient)
+	// Initialize Repositories
+	chatRepo := postgres.NewChatRepository(db)
+	cacheRepo := redis.NewCacheRepository(redisClient)
+
+	// Initialize Service
+	svc := chatService.NewService(chatRepo, cacheRepo, rmqClient)
 
 	log.Info().Msg("chat service started, waiting for messages...")
 
@@ -75,11 +92,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start a worker pool - all workers compete for messages from the shared queue
-	// This provides automatic load balancing and scales horizontally
+	// Start a worker pool
 	numWorkers := 10
 	for i := 0; i < numWorkers; i++ {
-		go svc.Worker(ctx, i)
+		go runWorker(ctx, i, svc, rmqClient)
 	}
 
 	// Wait for interrupt signal
@@ -95,39 +111,17 @@ func main() {
 	log.Info().Msg("chat service exited")
 }
 
-// ChatService handles chat message processing
-type ChatService struct {
-	db       *database.DB
-	redis    *redis.Client
-	rabbitmq *rabbitmq.Client
-}
-
-// NewChatService creates a new chat service
-func NewChatService(db *database.DB, redisClient *redis.Client, rmqClient *rabbitmq.Client) *ChatService {
-	return &ChatService{
-		db:       db,
-		redis:    redisClient,
-		rabbitmq: rmqClient,
-	}
-}
-
-// Worker processes messages from the shared chat queue
-// All workers compete for messages, providing automatic load balancing
-func (s *ChatService) Worker(ctx context.Context, workerID int) {
+func runWorker(ctx context.Context, workerID int, svc *chatService.Service, rmqClient *rabbitmq.Client) {
 	logger := log.With().Int("worker_id", workerID).Logger()
 	logger.Info().Msg("worker started")
 
 	consumerTag := fmt.Sprintf("chat-worker-%d", workerID)
 
-	// Start consuming from the shared chat queue
-	// This is best practice: all workers compete for messages from a single queue
-	msgs, err := s.rabbitmq.ConsumeSharedChatQueue(consumerTag)
+	msgs, err := rmqClient.ConsumeSharedChatQueue(consumerTag)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to start consuming from shared queue")
 		return
 	}
-
-	logger.Info().Str("queue", "chat.messages").Msg("consuming messages from shared queue")
 
 	for {
 		select {
@@ -139,121 +133,34 @@ func (s *ChatService) Worker(ctx context.Context, workerID int) {
 				logger.Warn().Msg("message channel closed")
 				return
 			}
-			// Process the message
-			if err := s.ProcessMessage(ctx, delivery); err != nil {
-				logger.Error().Err(err).Msg("failed to process message")
+			
+			// Process message
+			var payload struct {
+				UUID   string `json:"uuid"`
+				ChatID int64  `json:"chatId"`
+				UserID int64  `json:"userId"`
+				Body   string `json:"body"`
 			}
+
+			if err := json.Unmarshal(delivery.Body, &payload); err != nil {
+				logger.Error().Err(err).Msg("failed to parse message payload")
+				delivery.Nack(false, false)
+				continue
+			}
+
+			msg := &domain.Message{
+				ChatID: payload.ChatID,
+				UserID: payload.UserID,
+				Body:   payload.Body,
+			}
+
+			if err := svc.ProcessMessage(ctx, msg, payload.UUID); err != nil {
+				logger.Error().Err(err).Msg("failed to process message")
+				delivery.Nack(false, true)
+				continue
+			}
+
+			delivery.Ack(false)
 		}
 	}
-}
-
-// ProcessMessage processes a single chat message
-func (s *ChatService) ProcessMessage(ctx context.Context, delivery amqp.Delivery) error {
-	start := time.Now()
-
-	// Parse message payload
-	var payload struct {
-		UUID   string `json:"uuid"`
-		ChatID int64  `json:"chatId"`
-		UserID int64  `json:"userId"`
-		Body   string `json:"body"`
-	}
-
-	if err := json.Unmarshal(delivery.Body, &payload); err != nil {
-		log.Error().Err(err).Msg("failed to parse message payload")
-		delivery.Nack(false, false) // Don't requeue invalid messages
-		return err
-	}
-
-	logger := log.With().
-		Str("uuid", payload.UUID).
-		Int64("chat_id", payload.ChatID).
-		Int64("user_id", payload.UserID).
-		Logger()
-
-	logger.Info().Msg("processing message")
-
-	// 1. Persist message to Postgres
-	msg := &database.Message{
-		ChatID: payload.ChatID,
-		UserID: payload.UserID,
-		Body:   payload.Body,
-	}
-
-	if err := s.db.CreateMessage(ctx, msg); err != nil {
-		logger.Error().Err(err).Msg("failed to persist message")
-		delivery.Nack(false, true) // Requeue for retry
-		return err
-	}
-
-	logger.Info().Int64("msg_id", msg.ID).Msg("message persisted")
-
-	// 2. Read member list from Redis (with DB fallback)
-	members, err := s.redis.GetGroupMembers(ctx, payload.ChatID)
-	if err != nil || len(members) == 0 {
-		// Fallback to database
-		members, err = s.db.GetChatMembers(ctx, payload.ChatID)
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to get chat members")
-			delivery.Nack(false, true)
-			return err
-		}
-
-		// Cache in Redis for next time
-		if err := s.redis.AddGroupMembers(ctx, payload.ChatID, members); err != nil {
-			logger.Warn().Err(err).Msg("failed to cache group members")
-		}
-	}
-
-	// 3. Create receipts for all members
-	for _, memberID := range members {
-		receipt := &database.Receipt{
-			MsgID:  msg.ID,
-			UserID: memberID,
-			Status: database.ReceiptStatusSent,
-		}
-		if err := s.db.CreateReceipt(ctx, receipt); err != nil {
-			logger.Warn().Err(err).Int64("member_id", memberID).Msg("failed to create receipt")
-		}
-	}
-
-	// 4. Publish delivery event to delivery exchange
-	deliveryPayload, _ := json.Marshal(map[string]interface{}{
-		"type":      "Message",
-		"msgId":     msg.ID,
-		"chatId":    payload.ChatID,
-		"userId":    payload.UserID,
-		"body":      payload.Body,
-		"createdAt": msg.CreatedAt.Unix(),
-	})
-
-	if err := s.rabbitmq.PublishToDeliveryExchange(ctx, payload.ChatID, deliveryPayload); err != nil {
-		logger.Error().Err(err).Msg("failed to publish delivery event")
-		delivery.Nack(false, true)
-		return err
-	}
-
-	// 5. Send delivered acknowledgment back to sender
-	deliveredPayload, _ := json.Marshal(map[string]interface{}{
-		"type":  "Delivered",
-		"uuid":  payload.UUID,
-		"msgId": msg.ID,
-	})
-
-	if err := s.rabbitmq.PublishToDeliveryExchange(ctx, payload.ChatID, deliveredPayload); err != nil {
-		logger.Warn().Err(err).Msg("failed to publish delivered ack")
-	}
-
-	// ACK the message
-	if err := delivery.Ack(false); err != nil {
-		logger.Error().Err(err).Msg("failed to ack message")
-		return err
-	}
-
-	duration := time.Since(start)
-	logger.Info().
-		Dur("duration_ms", duration).
-		Msg("message processed successfully")
-
-	return nil
 }

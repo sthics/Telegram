@@ -23,6 +23,7 @@ import (
 	"github.com/ulule/limiter/v3"
 	ginlimiter "github.com/ulule/limiter/v3/drivers/middleware/gin"
 	"github.com/ulule/limiter/v3/drivers/store/memory"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 // GatewayServer handles HTTP and WebSocket requests
@@ -90,6 +91,7 @@ func NewGatewayServer(
 // Router creates the Gin router with all routes
 func (s *GatewayServer) Router() *gin.Engine {
 	r := gin.Default()
+	r.Use(otelgin.Middleware("gateway"))
 
 	// Health check
 	r.GET("/v1/health", s.healthHandler)

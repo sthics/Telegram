@@ -41,6 +41,18 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    env_file:
+      - .env
+    volumes:
+      - ./secrets:/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   gateway:
     build:
       context: .
@@ -49,6 +61,8 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    environment:
+      - OTEL_COLLECTOR_URL=jaeger:4317
     volumes:
       - ./secrets:/secrets:ro
     depends_on:
@@ -58,6 +72,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   chat-svc:
@@ -66,6 +82,8 @@ services:
       dockerfile: Dockerfile.chat-svc
     env_file:
       - .env
+    environment:
+      - OTEL_COLLECTOR_URL=jaeger:4317
     volumes:
       - ./secrets:/secrets:ro
     depends_on:
@@ -75,6 +93,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     deploy:
       replicas: 2
@@ -94,6 +114,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   push-svc:
@@ -111,12 +133,14 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "9091:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -125,6 +149,16 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
     restart: unless-stopped
 
   grafana:
