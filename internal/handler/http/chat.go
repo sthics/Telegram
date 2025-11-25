@@ -9,6 +9,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type CreateChatRequest struct {
+	Type      int16   `json:"type" binding:"required,oneof=1 2"`
+	MemberIDs []int64 `json:"memberIds" binding:"required,min=1"`
+}
+
+type InviteRequest struct {
+	UserID int64 `json:"userId" binding:"required"`
+}
+
+type DeviceRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Platform string `json:"platform" binding:"required,oneof=ios android web"`
+}
+
 type ChatHandler struct {
 	service *chat.Service
 }
@@ -17,13 +31,21 @@ func NewChatHandler(service *chat.Service) *ChatHandler {
 	return &ChatHandler{service: service}
 }
 
+// CreateChat godoc
+// @Summary      Create a new chat
+// @Description  Create a new direct or group chat
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body CreateChatRequest true "Create Chat Request"
+// @Success      201  {object}  map[string]int64
+// @Failure      400  {object}  map[string]string
+// @Router       /chats [post]
 func (h *ChatHandler) CreateChat(c *gin.Context) {
 	userID, _ := auth.GetUserID(c)
 
-	var req struct {
-		Type      int16   `json:"type" binding:"required,oneof=1 2"`
-		MemberIDs []int64 `json:"memberIds" binding:"required,min=1"`
-	}
+	var req CreateChatRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -39,6 +61,15 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"chatId": chat.ID})
 }
 
+// GetChats godoc
+// @Summary      Get user chats
+// @Description  Get all chats for the authenticated user
+// @Tags         chats
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   domain.Chat
+// @Failure      500  {object}  map[string]string
+// @Router       /chats [get]
 func (h *ChatHandler) GetChats(c *gin.Context) {
 	userID, _ := auth.GetUserID(c)
 
@@ -51,6 +82,18 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 	c.JSON(http.StatusOK, chats)
 }
 
+// InviteToChat godoc
+// @Summary      Invite user to chat
+// @Description  Add a user to an existing chat
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      int64  true  "Chat ID"
+// @Param        request body InviteRequest true "Invite Request"
+// @Success      204  "No Content"
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/invite [post]
 func (h *ChatHandler) InviteToChat(c *gin.Context) {
 	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -58,9 +101,7 @@ func (h *ChatHandler) InviteToChat(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		UserID int64 `json:"userId" binding:"required"`
-	}
+	var req InviteRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -75,6 +116,16 @@ func (h *ChatHandler) InviteToChat(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// LeaveChat godoc
+// @Summary      Leave chat
+// @Description  Remove authenticated user from chat
+// @Tags         chats
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      int64  true  "Chat ID"
+// @Success      204  "No Content"
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/members [delete]
 func (h *ChatHandler) LeaveChat(c *gin.Context) {
 	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -92,6 +143,17 @@ func (h *ChatHandler) LeaveChat(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// KickMember godoc
+// @Summary      Kick member from chat
+// @Description  Remove a user from chat (Admin only)
+// @Tags         chats
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id      path      int64  true  "Chat ID"
+// @Param        userId  path      int64  true  "User ID"
+// @Success      204  "No Content"
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/members/{userId} [delete]
 func (h *ChatHandler) KickMember(c *gin.Context) {
 	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -119,13 +181,21 @@ func (h *ChatHandler) KickMember(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// RegisterDevice godoc
+// @Summary      Register device for push
+// @Description  Register a device token for push notifications
+// @Tags         devices
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body DeviceRequest true "Device Registration Request"
+// @Success      201  "Created"
+// @Failure      400  {object}  map[string]string
+// @Router       /devices [post]
 func (h *ChatHandler) RegisterDevice(c *gin.Context) {
 	userID, _ := auth.GetUserID(c)
 
-	var req struct {
-		Token    string `json:"token" binding:"required"`
-		Platform string `json:"platform" binding:"required,oneof=ios android web"`
-	}
+	var req DeviceRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
