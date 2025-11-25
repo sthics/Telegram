@@ -105,6 +105,8 @@ services:
       dockerfile: Dockerfile.presence-svc
     env_file:
       - .env
+    environment:
+      - OTEL_COLLECTOR_URL=jaeger:4317
     volumes:
       - ./secrets:/secrets:ro
     depends_on:
@@ -124,6 +126,8 @@ services:
       dockerfile: Dockerfile.push-svc
     env_file:
       - .env
+    environment:
+      - OTEL_COLLECTOR_URL=jaeger:4317
     volumes:
       - ./secrets:/secrets:ro
     depends_on:

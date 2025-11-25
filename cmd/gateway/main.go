@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -106,7 +107,46 @@ func main() {
 	chatHandler := httpHandler.NewChatHandler(chatSvc)
 
 	// Create WebSocket hub
-	_ = websocket.NewHub(log.Logger) // Hub unused for now
+	hub := websocket.NewHub(log.Logger)
+
+	// Declare Delivery Queue for this Gateway instance
+	podID, _ := os.Hostname() // Use hostname as pod ID
+	queueName, err := rmqClient.DeclareDeliveryQueue(podID, nil)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to declare delivery queue")
+	}
+
+	// Initialize WebSocket Handler
+	wsHandler := httpHandler.NewWebSocketHandler(hub, chatSvc, auth.NewService(privateKey), rmqClient, queueName)
+
+	// Start RabbitMQ Consumer for Delivery
+	msgs, err := rmqClient.ConsumeDeliveryQueue(queueName, "gateway-"+podID)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to start delivery consumer")
+	}
+
+	go func() {
+		for d := range msgs {
+			var msg map[string]any
+			if err := json.Unmarshal(d.Body, &msg); err != nil {
+				log.Error().Err(err).Msg("failed to unmarshal delivery message")
+				d.Ack(false)
+				continue
+			}
+
+			chatID, ok := msg["chatId"].(float64)
+			if !ok {
+				// Try int64 if float64 fails (though JSON unmarshals numbers to float64)
+				// Or maybe it's missing
+				d.Ack(false)
+				continue
+			}
+
+			// Broadcast to chat members connected to this gateway
+			hub.BroadcastToChat(int64(chatID), d.Body)
+			d.Ack(false)
+		}
+	}()
 
 	// Let's create the router here directly
 	r := gin.Default()
@@ -116,6 +156,9 @@ func main() {
 	r.GET("/v1/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+
+	// WebSocket route
+	r.GET("/v1/ws", wsHandler.HandleWS)
 
 	// Auth routes
 	authGroup := r.Group("/v1/auth")

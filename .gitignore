@@ -7,6 +7,7 @@
 /gateway
 /chat-svc
 /presence-svc
+/push-svc
 bin/
 dist/
 
