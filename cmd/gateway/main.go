@@ -14,9 +14,10 @@ import (
 	"github.com/ambarg/mini-telegram/internal/rabbitmq"
 	"github.com/ambarg/mini-telegram/internal/repository/postgres"
 	"github.com/ambarg/mini-telegram/internal/repository/redis"
+	"github.com/ambarg/mini-telegram/internal/repository/s3"
 	authService "github.com/ambarg/mini-telegram/internal/service/auth"
 	chatService "github.com/ambarg/mini-telegram/internal/service/chat"
-	"github.com/ambarg/mini-telegram/internal/telemetry"
+	mediaService "github.com/ambarg/mini-telegram/internal/service/media"
 	"github.com/ambarg/mini-telegram/internal/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -55,15 +56,15 @@ func main() {
 	cfg := config.MustLoad()
 
 	// Initialize Tracer
-	shutdown, err := telemetry.InitTracer("gateway", cfg.OtelCollectorURL)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to initialize tracer")
-	}
-	defer func() {
-		if err := shutdown(context.Background()); err != nil {
-			log.Error().Err(err).Msg("failed to shutdown tracer")
-		}
-	}()
+	// shutdown, err := telemetry.InitTracer("gateway", cfg.OtelCollectorURL)
+	// if err != nil {
+	// 	log.Fatal().Err(err).Msg("failed to initialize tracer")
+	// }
+	// defer func() {
+	// 	if err := shutdown(context.Background()); err != nil {
+	// 		log.Error().Err(err).Msg("failed to shutdown tracer")
+	// 	}
+	// }()
 
 
 	// Set Gin mode
@@ -119,14 +120,20 @@ func main() {
 	userRepo := postgres.NewUserRepository(db)
 	chatRepo := postgres.NewChatRepository(db)
 	cacheRepo := redis.NewCacheRepository(redisClient)
+	mediaRepo, err := s3.New(context.Background(), cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize S3 repository")
+	}
 
 	// Initialize Services
 	authSvc := authService.NewService(userRepo, auth.NewService(privateKey))
 	chatSvc := chatService.NewService(chatRepo, cacheRepo, rmqClient)
+	mediaSvc := mediaService.NewService(mediaRepo)
 
 	// Initialize Handlers
 	authHandler := httpHandler.NewAuthHandler(authSvc)
 	chatHandler := httpHandler.NewChatHandler(chatSvc)
+	mediaHandler := httpHandler.NewMediaHandler(mediaSvc)
 
 	// Create WebSocket hub
 	hub := websocket.NewHub(log.Logger)
@@ -200,12 +207,19 @@ func main() {
 	protected.Use(jwtMiddleware)
 	{
 		// Chat routes
+		// Chat routes
 		protected.GET("/chats", chatHandler.GetChats)
 		protected.POST("/chats", chatHandler.CreateChat)
+		protected.PATCH("/chats/:id", chatHandler.UpdateGroupInfo)
 		protected.POST("/chats/:id/invite", chatHandler.InviteToChat)
 		protected.DELETE("/chats/:id/members/:userId", chatHandler.KickMember)
 		protected.DELETE("/chats/:id/members", chatHandler.LeaveChat)
+		protected.POST("/chats/:id/members/:userId/promote", chatHandler.PromoteMember)
+		protected.POST("/chats/:id/members/:userId/demote", chatHandler.DemoteMember)
 		protected.POST("/devices", chatHandler.RegisterDevice)
+
+		// Media routes
+		protected.POST("/uploads/presigned", mediaHandler.GetUploadURL)
 	}
 
 	// Start server

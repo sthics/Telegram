@@ -44,6 +44,13 @@ type Config struct {
 	// Rate Limiting
 	LoginRateLimit int `envconfig:"LOGIN_RATE_LIMIT" default:"5"` // requests per minute per IP
 	WSRateLimit    int `envconfig:"WS_RATE_LIMIT" default:"20"`   // connections per minute per IP
+
+	// Object Storage (S3/MinIO)
+	ObjectStoreEndpoint  string `envconfig:"OBJECT_STORE_ENDPOINT" default:"http://minio:9000"`
+	ObjectStoreRegion    string `envconfig:"OBJECT_STORE_REGION" default:"us-east-1"`
+	ObjectStoreBucket    string `envconfig:"OBJECT_STORE_BUCKET" default:"chat-media"`
+	ObjectStoreAccessKey string `envconfig:"OBJECT_STORE_ACCESS_KEY" default:"minioadmin"`
+	ObjectStoreSecretKey string `envconfig:"OBJECT_STORE_SECRET_KEY" default:"minioadmin"`
 }
 
 // Load loads configuration from environment variables

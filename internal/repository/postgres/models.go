@@ -36,6 +36,7 @@ func FromDomainUser(u *domain.User) *UserDAO {
 type ChatDAO struct {
 	ID        int64     `gorm:"primaryKey"`
 	Type      int16     `gorm:"not null;check:type IN (1,2)"`
+	Title     string    `gorm:"size:255"`
 	CreatedAt time.Time `gorm:"default:now()"`
 }
 
@@ -43,6 +44,7 @@ func (c *ChatDAO) ToDomain() *domain.Chat {
 	return &domain.Chat{
 		ID:        c.ID,
 		Type:      c.Type,
+		Title:     c.Title,
 		CreatedAt: c.CreatedAt,
 	}
 }
@@ -51,6 +53,7 @@ func FromDomainChat(c *domain.Chat) *ChatDAO {
 	return &ChatDAO{
 		ID:        c.ID,
 		Type:      c.Type,
+		Title:     c.Title,
 		CreatedAt: c.CreatedAt,
 	}
 }

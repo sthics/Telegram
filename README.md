@@ -23,10 +23,13 @@ That's it! The scripts will handle everything: Go, Docker, all tools, and config
 - JWT authentication (ES256)
 - End-to-end encryption support (optional)
 - Direct and group chats
+- **Group Administration** (Roles, Titles, Permissions)
+- **Media Support** (Image/File uploads via S3/MinIO)
 - Message persistence and history
 - Read receipts and presence
 - Horizontal scalability
 - Zero-downtime deployments
+- **Swagger Documentation**
 
 ## Architecture
 
@@ -38,6 +41,7 @@ That's it! The scripts will handle everything: Go, Docker, all tools, and config
 4. **PostgreSQL** - Message and user persistence
 5. **Redis** - Connection registry, presence cache, group members
 6. **RabbitMQ** - Message queue for async processing
+7. **MinIO** - S3-compatible object storage for media
 
 ### Tech Stack
 
@@ -47,6 +51,8 @@ That's it! The scripts will handle everything: Go, Docker, all tools, and config
 - PostgreSQL 15
 - Redis 7
 - RabbitMQ 3.12
+- MinIO (S3 compatible storage)
+- AWS SDK v2
 - GORM (ORM)
 - Prometheus + Grafana (observability)
 
@@ -122,6 +128,8 @@ docker-compose up --build
 
 Access:
 - Gateway API: http://localhost:8080
+- Swagger UI: http://localhost:8080/swagger/index.html
+- MinIO Console: http://localhost:9001 (user: minioadmin, pass: minioadmin)
 - RabbitMQ Management: http://localhost:15672 (guest/guest)
 
 ## API Endpoints
@@ -172,7 +180,75 @@ Content-Type: application/json
 
 {
   "type": 2,
-  "memberIds": [2, 3, 4]
+  "memberIds": [2, 3, 4],
+  "title": "My Awesome Group"
+}
+```
+
+**Update Group Info:**
+```bash
+PATCH /v1/chats/:id
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "title": "New Title"
+}
+```
+
+**Promote Member:**
+```bash
+POST /v1/chats/:id/members/:userId/promote
+Authorization: Bearer <accessToken>
+```
+
+**Demote Member:**
+```bash
+POST /v1/chats/:id/members/:userId/demote
+Authorization: Bearer <accessToken>
+```
+
+**Invite to Chat:**
+```bash
+POST /v1/chats/:id/invite
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "userId": 123
+}
+```
+
+**Leave Chat:**
+```bash
+DELETE /v1/chats/:id/members
+Authorization: Bearer <accessToken>
+```
+
+**Kick Member:**
+```bash
+DELETE /v1/chats/:id/members/:userId
+Authorization: Bearer <accessToken>
+```
+
+### Media
+
+**Get Upload URL:**
+```bash
+POST /v1/uploads/presigned
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "filename": "image.jpg",
+  "contentType": "image/jpeg"
+}
+```
+Response:
+```json
+{
+  "uploadUrl": "http://localhost:9000/...",
+  "objectKey": "uploads/1/uuid.jpg"
 }
 ```
 
@@ -190,6 +266,37 @@ Send message:
   "uuid": "client-generated-uuid",
   "chatId": 1,
   "body": "Hello, World!"
+}
+```
+
+Send Typing Indicator:
+```json
+{
+  "type": "Typing",
+  "chatId": 1
+}
+```
+
+Send Read Receipt:
+```json
+{
+  "type": "Read",
+  "chatId": 1,
+  "messageId": 100
+}
+```
+
+### Devices
+
+**Register Device:**
+```bash
+POST /v1/devices
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "token": "device-push-token",
+  "platform": "ios"
 }
 ```
 

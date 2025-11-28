@@ -20,9 +20,11 @@ const (
 )
 
 // Chat represents a chat room
+
 type Chat struct {
 	ID        int64     `json:"id"`
 	Type      int16     `json:"type"`
+	Title     string    `json:"title,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -72,14 +74,16 @@ type DeviceToken struct {
 
 // ChatRepository defines the interface for chat data access
 type ChatRepository interface {
-	CreateChat(ctx context.Context, chat *Chat) error
-	GetChat(ctx context.Context, id int64) (*Chat, error)
+	CreateChat(ctx context.Context, chat *Chat, memberIDs []int64) (*Chat, error)
+	GetChat(ctx context.Context, chatID int64) (*Chat, error)
+	UpdateChat(ctx context.Context, chat *Chat) error
 	GetUserChats(ctx context.Context, userID int64) ([]Chat, error)
-	
-	AddMember(ctx context.Context, member *ChatMember) error
+	AddMember(ctx context.Context, chatID, userID int64, role Role) error
 	RemoveMember(ctx context.Context, chatID, userID int64) error
-	GetMember(ctx context.Context, chatID, userID int64) (*ChatMember, error)
-	GetMembers(ctx context.Context, chatID int64) ([]int64, error)
+	UpdateMemberRole(ctx context.Context, chatID, userID int64, role Role) error
+	GetChatMembers(ctx context.Context, chatID int64) ([]ChatMember, error)
+	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
+	GetMemberRole(ctx context.Context, chatID, userID int64) (Role, error)
 	
 	CreateMessage(ctx context.Context, msg *Message) error
 	GetMessageHistory(ctx context.Context, chatID int64, limit int) ([]Message, error)

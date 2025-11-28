@@ -108,14 +108,19 @@ func NewChatRepository(db *DB) *ChatRepository {
 	return &ChatRepository{db: db.DB}
 }
 
-func (r *ChatRepository) CreateChat(ctx context.Context, chat *domain.Chat) error {
+func (r *ChatRepository) CreateChat(ctx context.Context, chat *domain.Chat, memberIDs []int64) (*domain.Chat, error) {
 	dao := FromDomainChat(chat)
 	if err := r.db.WithContext(ctx).Create(dao).Error; err != nil {
-		return err
+		return nil, err
 	}
 	chat.ID = dao.ID
 	chat.CreatedAt = dao.CreatedAt
-	return nil
+	return chat, nil
+}
+
+func (r *ChatRepository) UpdateChat(ctx context.Context, chat *domain.Chat) error {
+	dao := FromDomainChat(chat)
+	return r.db.WithContext(ctx).Model(dao).Updates(dao).Error
 }
 
 func (r *ChatRepository) GetChat(ctx context.Context, id int64) (*domain.Chat, error) {
@@ -142,9 +147,20 @@ func (r *ChatRepository) GetUserChats(ctx context.Context, userID int64) ([]doma
 	return chats, nil
 }
 
-func (r *ChatRepository) AddMember(ctx context.Context, member *domain.ChatMember) error {
-	dao := FromDomainChatMember(member)
+func (r *ChatRepository) AddMember(ctx context.Context, chatID, userID int64, role domain.Role) error {
+	dao := &ChatMemberDAO{
+		ChatID: chatID,
+		UserID: userID,
+		Role:   string(role),
+	}
 	return r.db.WithContext(ctx).Create(dao).Error
+}
+
+func (r *ChatRepository) UpdateMemberRole(ctx context.Context, chatID, userID int64, role domain.Role) error {
+	return r.db.WithContext(ctx).
+		Model(&ChatMemberDAO{}).
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		Update("role", string(role)).Error
 }
 
 func (r *ChatRepository) RemoveMember(ctx context.Context, chatID, userID int64) error {
@@ -153,27 +169,38 @@ func (r *ChatRepository) RemoveMember(ctx context.Context, chatID, userID int64)
 		Delete(&ChatMemberDAO{}).Error
 }
 
-func (r *ChatRepository) GetMember(ctx context.Context, chatID, userID int64) (*domain.ChatMember, error) {
-	var dao ChatMemberDAO
-	if err := r.db.WithContext(ctx).
-		Where("chat_id = ? AND user_id = ?", chatID, userID).
-		First(&dao).Error; err != nil {
+func (r *ChatRepository) GetChatMembers(ctx context.Context, chatID int64) ([]domain.ChatMember, error) {
+	var daos []ChatMemberDAO
+	if err := r.db.WithContext(ctx).Where("chat_id = ?", chatID).Find(&daos).Error; err != nil {
 		return nil, err
 	}
-	return dao.ToDomain(), nil
+
+	members := make([]domain.ChatMember, len(daos))
+	for i, dao := range daos {
+		members[i] = *dao.ToDomain()
+	}
+	return members, nil
 }
 
-func (r *ChatRepository) GetMembers(ctx context.Context, chatID int64) ([]int64, error) {
-	var members []ChatMemberDAO
-	if err := r.db.WithContext(ctx).Where("chat_id = ?", chatID).Find(&members).Error; err != nil {
-		return nil, err
-	}
+func (r *ChatRepository) IsMember(ctx context.Context, chatID, userID int64) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&ChatMemberDAO{}).
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		Count(&count).Error
+	return count > 0, err
+}
 
-	userIDs := make([]int64, len(members))
-	for i, m := range members {
-		userIDs[i] = m.UserID
+func (r *ChatRepository) GetMemberRole(ctx context.Context, chatID, userID int64) (domain.Role, error) {
+	var role string
+	err := r.db.WithContext(ctx).
+		Model(&ChatMemberDAO{}).
+		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		Pluck("role", &role).Error
+	if err != nil {
+		return "", err
 	}
-	return userIDs, nil
+	return domain.Role(role), nil
 }
 
 func (r *ChatRepository) CreateMessage(ctx context.Context, msg *domain.Message) error {
