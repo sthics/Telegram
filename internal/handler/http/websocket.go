@@ -9,6 +9,7 @@ import (
 	"github.com/ambarg/mini-telegram/internal/auth"
 	"github.com/ambarg/mini-telegram/internal/domain"
 	"github.com/ambarg/mini-telegram/internal/rabbitmq"
+	"github.com/ambarg/mini-telegram/internal/repository/redis"
 	"github.com/ambarg/mini-telegram/internal/service/chat"
 	ws "github.com/ambarg/mini-telegram/internal/websocket"
 	"github.com/gin-gonic/gin"
@@ -20,15 +21,17 @@ type WebSocketHandler struct {
 	hub       *ws.Hub
 	chatSvc   *chat.Service
 	authSvc   *auth.Service
+	cacheRepo *redis.CacheRepository
 	rmqClient *rabbitmq.Client
 	queueName string // Gateway's delivery queue name
 }
 
-func NewWebSocketHandler(hub *ws.Hub, chatSvc *chat.Service, authSvc *auth.Service, rmqClient *rabbitmq.Client, queueName string) *WebSocketHandler {
+func NewWebSocketHandler(hub *ws.Hub, chatSvc *chat.Service, authSvc *auth.Service, cacheRepo *redis.CacheRepository, rmqClient *rabbitmq.Client, queueName string) *WebSocketHandler {
 	return &WebSocketHandler{
 		hub:       hub,
 		chatSvc:   chatSvc,
 		authSvc:   authSvc,
+		cacheRepo: cacheRepo,
 		rmqClient: rmqClient,
 		queueName: queueName,
 	}
@@ -90,26 +93,58 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 
 	// 4. Subscribe to user's chats
 	// We need to get user's chats and bind the gateway queue to them
-	// This should ideally be done async or optimized, but for now do it here
 	ctx := c.Request.Context()
 	chats, err := h.chatSvc.GetUserChats(ctx, userID)
 	if err == nil {
 		for _, chat := range chats {
 			h.hub.Subscribe(userID, chat.ID)
 			// Bind gateway queue to this chat
-			// Note: This might be redundant if already bound, but RabbitMQ handles idempotency
 			if err := h.rmqClient.BindDeliveryQueue(h.queueName, chat.ID); err != nil {
 				log.Error().Err(err).Int64("chat_id", chat.ID).Msg("failed to bind delivery queue")
+			}
+			
+			// Broadcast Online Status
+			if err := h.rmqClient.PublishUserStatus(ctx, chat.ID, userID, "online"); err != nil {
+				log.Error().Err(err).Int64("chat_id", chat.ID).Msg("failed to publish online status")
 			}
 		}
 	}
 
+	// Set Online in Redis
+	if err := h.cacheRepo.SetPresence(ctx, userID, true, 5*time.Minute); err != nil {
+		log.Error().Err(err).Msg("failed to set presence")
+	}
+
 	// 5. Start Pumps
 	go wsHandler.WritePump(50 * time.Second)
-	go wsHandler.ReadPump(func(msg []byte) error {
-		return h.handleMessage(userID, msg)
-	})
+	go func() {
+		wsHandler.ReadPump(func(msg []byte) error {
+			return h.handleMessage(userID, msg)
+		})
+		
+		// Cleanup on disconnect
+		disconnectCtx := context.Background()
+		h.hub.Unregister(userID, device)
+		
+		// Set Offline in Redis
+		if err := h.cacheRepo.SetPresence(disconnectCtx, userID, false, 0); err != nil {
+			log.Error().Err(err).Msg("failed to set presence offline")
+		}
+
+		// Broadcast Offline Status
+		// We need to fetch chats again or cache them. Fetching is safer.
+		userChats, err := h.chatSvc.GetUserChats(disconnectCtx, userID)
+		if err == nil {
+			for _, chat := range userChats {
+				if err := h.rmqClient.PublishUserStatus(disconnectCtx, chat.ID, userID, "offline"); err != nil {
+					log.Error().Err(err).Int64("chat_id", chat.ID).Msg("failed to publish offline status")
+				}
+			}
+		}
+	}()
 }
+	
+
 
 func (h *WebSocketHandler) handleMessage(userID int64, payload []byte) error {
 	var msg map[string]any

@@ -58,6 +58,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		"userId":       resp.UserID,
 		"accessToken":  resp.AccessToken,
 		"refreshToken": resp.RefreshToken,
+		"user":         resp.User,
 	})
 }
 
@@ -91,6 +92,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"userId":       resp.UserID,
 		"accessToken":  resp.AccessToken,
 		"refreshToken": resp.RefreshToken,
+		"user":         resp.User,
 	})
 }
 

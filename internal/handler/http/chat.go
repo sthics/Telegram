@@ -83,6 +83,43 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 	c.JSON(http.StatusOK, chats)
 }
 
+// GetMessages godoc
+// @Summary      Get chat messages
+// @Description  Get message history for a chat
+// @Tags         chats
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id     path      int64  true  "Chat ID"
+// @Param        limit  query     int    false "Limit"
+// @Success      200  {array}   domain.Message
+// @Failure      400  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /chats/{id}/messages [get]
+func (h *ChatHandler) GetMessages(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	userID, _ := auth.GetUserID(c)
+
+	msgs, err := h.service.GetMessages(c.Request.Context(), chatID, userID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, msgs)
+}
+
 // InviteToChat godoc
 // @Summary      Invite user to chat
 // @Description  Add a user to an existing chat

@@ -41,8 +41,7 @@ func (s *Service) CreateChat(ctx context.Context, creatorID int64, reqType int16
 		}
 		
 		if err := s.chatRepo.AddMember(ctx, chat.ID, memberID, role); err != nil {
-			// Log error but continue? Or fail?
-			// For now, fail
+
 			return nil, fmt.Errorf("failed to add member %d: %w", memberID, err)
 		}
 	}
@@ -59,6 +58,19 @@ func (s *Service) GetUserChats(ctx context.Context, userID int64) ([]domain.Chat
 	return s.chatRepo.GetUserChats(ctx, userID)
 }
 
+func (s *Service) GetMessages(ctx context.Context, chatID, userID int64, limit int) ([]domain.Message, error) {
+	// Check membership
+	isMember, err := s.chatRepo.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, fmt.Errorf("permission denied: user is not a member of this chat")
+	}
+
+	return s.chatRepo.GetMessageHistory(ctx, chatID, limit)
+}
+
 func (s *Service) AddMember(ctx context.Context, chatID, userID int64) error {
 	if err := s.chatRepo.AddMember(ctx, chatID, userID, domain.RoleMember); err != nil {
 		return err
@@ -70,10 +82,6 @@ func (s *Service) AddMember(ctx context.Context, chatID, userID int64) error {
 
 func (s *Service) RemoveMember(ctx context.Context, chatID, userID int64) error {
 	// TODO: Add permission check if caller is not userID (i.e. kick vs leave)
-	// For now, we assume the handler handles the "who is calling" check or we pass actorID here.
-	// Let's keep it simple for now as per previous refactor, but ideally:
-	// actorID := auth.GetUserID(ctx)
-	// if actorID != userID { checkAdmin(actorID) }
 	
 	if err := s.chatRepo.RemoveMember(ctx, chatID, userID); err != nil {
 		return err
@@ -190,8 +198,7 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *domain.Message, clien
 		})
 
 		if err := s.broker.PublishToDeliveryExchange(ctx, msg.ChatID, deliveredPayload); err != nil {
-			// Log warning but don't fail the whole process?
-			// For now, return error to be safe
+
 			return fmt.Errorf("failed to publish delivered ack: %w", err)
 		}
 	}

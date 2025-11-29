@@ -90,13 +90,17 @@ func (r *CacheRepository) GetConnection(ctx context.Context, userID int64, devic
 	return val, nil
 }
 
-// SetPresence sets user presence
+// SetPresence sets user presence.
+// If online is true, it stores the current timestamp.
+// If online is false, it stores the current timestamp as a negative value (explicit offline).
 func (r *CacheRepository) SetPresence(ctx context.Context, userID int64, online bool, ttl time.Duration) error {
 	key := fmt.Sprintf("pres:%d", userID)
-	value := "0"
-	if online {
-		value = fmt.Sprintf("%d", time.Now().Unix())
+	timestamp := time.Now().Unix()
+	if !online {
+		timestamp = -timestamp
 	}
+	
+	value := fmt.Sprintf("%d", timestamp)
 
 	if err := r.client.Set(ctx, key, value, ttl).Err(); err != nil {
 		return fmt.Errorf("failed to set presence: %w", err)
@@ -123,6 +127,11 @@ func (r *CacheRepository) GetPresence(ctx context.Context, userID int64) (online
 	_, err = fmt.Sscanf(val, "%d", &timestamp)
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to parse presence timestamp: %w", err)
+	}
+
+	// If negative, it means explicit offline
+	if timestamp < 0 {
+		return false, -timestamp, nil
 	}
 
 	// Consider online if last seen within 60 seconds

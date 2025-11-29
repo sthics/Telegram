@@ -30,6 +30,7 @@ type TokenResponse struct {
 	UserID       int64
 	AccessToken  string
 	RefreshToken string
+	User         *domain.User
 }
 
 func (s *Service) Register(ctx context.Context, input RegisterInput) (*TokenResponse, error) {
@@ -50,7 +51,12 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*TokenResp
 	}
 
 	// Generate tokens
-	return s.generateTokens(user.ID)
+	resp, err := s.generateTokens(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	resp.User = user
+	return resp, nil
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (*TokenResponse, error) {
@@ -63,7 +69,12 @@ func (s *Service) Login(ctx context.Context, email, password string) (*TokenResp
 		return nil, errors.New("invalid credentials")
 	}
 
-	return s.generateTokens(user.ID)
+	resp, err := s.generateTokens(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	resp.User = user
+	return resp, nil
 }
 
 func (s *Service) RefreshToken(refreshToken string) (string, error) {

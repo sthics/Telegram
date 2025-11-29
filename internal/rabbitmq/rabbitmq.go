@@ -521,3 +521,28 @@ func (c *Client) ConsumeDeliveryQueue(queueName, consumerTag string) (<-chan amq
 
 	return msgs, nil
 }
+// PublishUserStatus publishes a user online/offline status update
+func (c *Client) PublishUserStatus(ctx context.Context, chatID, userID int64, status string) error {
+	routingKey := fmt.Sprintf("%d", chatID)
+	
+	body := []byte(fmt.Sprintf(`{"type":"UserStatus","userId":%d,"status":"%s"}`, userID, status))
+
+	err := c.channel.PublishWithContext(
+		ctx,
+		"delivery.topic", // exchange
+		routingKey,       // routing key
+		false,            // mandatory
+		false,            // immediate
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: amqp.Transient, // Transient for ephemeral events
+			Timestamp:    time.Now(),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to publish user status: %w", err)
+	}
+
+	return nil
+}

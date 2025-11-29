@@ -55,18 +55,6 @@ func main() {
 	// Load configuration
 	cfg := config.MustLoad()
 
-	// Initialize Tracer
-	// shutdown, err := telemetry.InitTracer("gateway", cfg.OtelCollectorURL)
-	// if err != nil {
-	// 	log.Fatal().Err(err).Msg("failed to initialize tracer")
-	// }
-	// defer func() {
-	// 	if err := shutdown(context.Background()); err != nil {
-	// 		log.Error().Err(err).Msg("failed to shutdown tracer")
-	// 	}
-	// }()
-
-
 	// Set Gin mode
 	gin.SetMode(cfg.GinMode)
 
@@ -134,6 +122,7 @@ func main() {
 	authHandler := httpHandler.NewAuthHandler(authSvc)
 	chatHandler := httpHandler.NewChatHandler(chatSvc)
 	mediaHandler := httpHandler.NewMediaHandler(mediaSvc)
+	userHandler := httpHandler.NewUserHandler(cacheRepo)
 
 	// Create WebSocket hub
 	hub := websocket.NewHub(log.Logger)
@@ -146,7 +135,7 @@ func main() {
 	}
 
 	// Initialize WebSocket Handler
-	wsHandler := httpHandler.NewWebSocketHandler(hub, chatSvc, auth.NewService(privateKey), rmqClient, queueName)
+	wsHandler := httpHandler.NewWebSocketHandler(hub, chatSvc, auth.NewService(privateKey), cacheRepo, rmqClient, queueName)
 
 	// Start RabbitMQ Consumer for Delivery
 	msgs, err := rmqClient.ConsumeDeliveryQueue(queueName, "gateway-"+podID)
@@ -165,8 +154,6 @@ func main() {
 
 			chatID, ok := msg["chatId"].(float64)
 			if !ok {
-				// Try int64 if float64 fails (though JSON unmarshals numbers to float64)
-				// Or maybe it's missing
 				d.Ack(false)
 				continue
 			}
@@ -177,7 +164,7 @@ func main() {
 		}
 	}()
 
-	// Let's create the router here directly
+	// Setup Router
 	r := gin.Default()
 	r.Use(otelgin.Middleware("gateway"))
 
@@ -207,7 +194,6 @@ func main() {
 	protected.Use(jwtMiddleware)
 	{
 		// Chat routes
-		// Chat routes
 		protected.GET("/chats", chatHandler.GetChats)
 		protected.POST("/chats", chatHandler.CreateChat)
 		protected.PATCH("/chats/:id", chatHandler.UpdateGroupInfo)
@@ -216,10 +202,14 @@ func main() {
 		protected.DELETE("/chats/:id/members", chatHandler.LeaveChat)
 		protected.POST("/chats/:id/members/:userId/promote", chatHandler.PromoteMember)
 		protected.POST("/chats/:id/members/:userId/demote", chatHandler.DemoteMember)
+		protected.GET("/chats/:id/messages", chatHandler.GetMessages)
 		protected.POST("/devices", chatHandler.RegisterDevice)
 
 		// Media routes
 		protected.POST("/uploads/presigned", mediaHandler.GetUploadURL)
+
+		// User routes
+		protected.GET("/users/:id/presence", userHandler.GetUserPresence)
 	}
 
 	// Start server
