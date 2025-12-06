@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/ambarg/mini-telegram/internal/auth"
+	"github.com/ambarg/mini-telegram/internal/domain"
 	"github.com/ambarg/mini-telegram/internal/service/chat"
 	"github.com/gin-gonic/gin"
 )
@@ -83,6 +84,35 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 	c.JSON(http.StatusOK, chats)
 }
 
+// GetChatMembers godoc
+// @Summary      Get chat members
+// @Description  Get all members of a chat
+// @Tags         chats
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      int64  true  "Chat ID"
+// @Success      200  {array}   domain.ChatMember
+// @Failure      400  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /chats/{id}/members [get]
+func (h *ChatHandler) GetChatMembers(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	userID, _ := auth.GetUserID(c)
+
+	members, err := h.service.GetChatMembers(c.Request.Context(), chatID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, members)
+}
+
 // GetMessages godoc
 // @Summary      Get chat messages
 // @Description  Get message history for a chat
@@ -118,6 +148,50 @@ func (h *ChatHandler) GetMessages(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, msgs)
+}
+
+// SendMessage godoc
+// @Summary      Send a message
+// @Description  Send a message to a chat
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      int64  true  "Chat ID"
+// @Param        request body struct{Body string `json:"body"`} true "Message Body"
+// @Success      201  {object}  map[string]int64
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/messages [post]
+func (h *ChatHandler) SendMessage(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	var req struct {
+		Body string `json:"body" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID, _ := auth.GetUserID(c)
+
+	msg := &domain.Message{
+		ChatID: chatID,
+		UserID: userID,
+		Body:   req.Body,
+	}
+
+	// We pass empty clientUUID for REST API for now
+	if err := h.service.ProcessMessage(c.Request.Context(), msg, ""); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"messageId": msg.ID})
 }
 
 // InviteToChat godoc
@@ -352,4 +426,40 @@ func (h *ChatHandler) RegisterDevice(c *gin.Context) {
 	}
 
 	c.Status(http.StatusCreated)
+}
+
+// MarkRead godoc
+// @Summary      Mark chat as read
+// @Description  Update last read message ID
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      int64  true  "Chat ID"
+// @Param        request body struct{LastReadID int64 `json:"lastReadId"`} true "Mark Read Request"
+// @Success      204  "No Content"
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/read [post]
+func (h *ChatHandler) MarkRead(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	var req struct {
+		LastReadID int64 `json:"lastReadId" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID, _ := auth.GetUserID(c)
+	if err := h.service.MarkChatRead(c.Request.Context(), chatID, userID, req.LastReadID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }

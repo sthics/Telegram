@@ -122,7 +122,7 @@ func main() {
 	authHandler := httpHandler.NewAuthHandler(authSvc)
 	chatHandler := httpHandler.NewChatHandler(chatSvc)
 	mediaHandler := httpHandler.NewMediaHandler(mediaSvc)
-	userHandler := httpHandler.NewUserHandler(cacheRepo)
+	userHandler := httpHandler.NewUserHandler(cacheRepo, userRepo)
 
 	// Create WebSocket hub
 	hub := websocket.NewHub(log.Logger)
@@ -203,6 +203,9 @@ func main() {
 		protected.POST("/chats/:id/members/:userId/promote", chatHandler.PromoteMember)
 		protected.POST("/chats/:id/members/:userId/demote", chatHandler.DemoteMember)
 		protected.GET("/chats/:id/messages", chatHandler.GetMessages)
+		protected.POST("/chats/:id/messages", chatHandler.SendMessage)
+		protected.POST("/chats/:id/read", chatHandler.MarkRead) // New route
+		protected.GET("/chats/:id/members", chatHandler.GetChatMembers)
 		protected.POST("/devices", chatHandler.RegisterDevice)
 
 		// Media routes
@@ -210,6 +213,7 @@ func main() {
 
 		// User routes
 		protected.GET("/users/:id/presence", userHandler.GetUserPresence)
+		protected.GET("/users", userHandler.SearchUsers)
 	}
 
 	// Start server

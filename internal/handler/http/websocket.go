@@ -178,6 +178,19 @@ func (h *WebSocketHandler) handleMessage(userID int64, payload []byte) error {
 
 		return h.chatSvc.ProcessMessage(ctx, domainMsg, uuid)
 
+	case "Subscribe":
+		chatID, _ := msg["chatId"].(float64)
+		cID := int64(chatID)
+
+		// Verify membership
+		isMember, err := h.chatSvc.IsMember(ctx, cID, userID)
+		if err != nil || !isMember {
+			return nil // Ignore or return error
+		}
+
+		h.hub.Subscribe(userID, cID)
+		return h.rmqClient.BindDeliveryQueue(h.queueName, cID)
+
 	case "Typing":
 		chatID, _ := msg["chatId"].(float64)
 		// Publish typing event

@@ -213,6 +213,8 @@ test_messaging.sh
 test_websocket.py
 test_ws_client.go
 
-# Documentation and scripts (not tracked)
+# Secrets directory
+keys/
+
+# Documentation
 docs/
-scripts/

@@ -15,6 +15,7 @@ import (
 	"github.com/ambarg/mini-telegram/internal/rabbitmq"
 	"github.com/ambarg/mini-telegram/internal/redis"
 	"github.com/ambarg/mini-telegram/internal/websocket"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
@@ -74,6 +75,11 @@ func NewGatewayServer(
 
 	prometheus.MustRegister(metrics.msgSent, metrics.durHist, metrics.wsConns)
 
+	allowedOrigins := make(map[string]bool)
+	for _, origin := range cfg.AllowedOrigins {
+		allowedOrigins[origin] = true
+	}
+
 	return &GatewayServer{
 		cfg:         cfg,
 		authService: authService,
@@ -82,7 +88,13 @@ func NewGatewayServer(
 		rabbitmq:    rmqClient,
 		hub:         hub,
 		upgrader: gorillaws.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true // Allow non-browser clients? Or strictly enforce? For now, allow empty origin (e.g. mobile apps/curl potentially)
+				}
+				return allowedOrigins[origin]
+			},
 		},
 		metrics: metrics,
 	}
@@ -92,6 +104,13 @@ func NewGatewayServer(
 func (s *GatewayServer) Router() *gin.Engine {
 	r := gin.Default()
 	r.Use(otelgin.Middleware("gateway"))
+
+	// CORS Config
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowOrigins = s.cfg.AllowedOrigins
+	corsConfig.AllowCredentials = true
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
+	r.Use(cors.New(corsConfig))
 
 	// Health check
 	r.GET("/v1/health", s.healthHandler)

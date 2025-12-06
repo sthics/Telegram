@@ -1,6 +1,6 @@
 # Mini-Telegram
 
-A high-performance, real-time messaging service built with Go, supporting 10k concurrent WebSocket connections with <200ms p99 delivery latency.
+A high-performance, real-time messaging service built with Go (Backend) and React (Frontend), supporting 10k concurrent WebSocket connections with <200ms p99 delivery latency.
 
 ## 🚀 Quick Start (One Command!)
 
@@ -15,423 +15,113 @@ A high-performance, real-time messaging service built with Go, supporting 10k co
 ./scripts/setup.sh
 ```
 
-That's it! The scripts will handle everything: Go, Docker, all tools, and configuration.
+The setup script currently handles the backend. For the frontend:
+
+```bash
+cd web
+npm install
+npm run dev
+```
 
 ## Features
 
-- Real-time WebSocket messaging
-- JWT authentication (ES256)
-- End-to-end encryption support (optional)
-- Direct and group chats
+- **Real-time WebSocket messaging** (JSON based)
+- **Modern Web Client** (React 19, Tailwind, Vite)
+- **JWT authentication** (ES256)
+- **Direct and Group Chats**
 - **Group Administration** (Roles, Titles, Permissions)
 - **Media Support** (Image/File uploads via S3/MinIO)
-- Message persistence and history
-- Read receipts and presence
-- Horizontal scalability
-- Zero-downtime deployments
-- **Swagger Documentation**
+- **Message Persistence** (PostgreSQL)
+- **Read Receipts** (Ticks/Double Ticks)
+- **Presence Status** (Online/Offline)
+- **Push Notifications** (FCM infrastructure ready)
+- **Horizontal Scalability** (RabbitMQ + Redis)
 
 ## Architecture
 
 ### Core Components
 
-1. **gateway** - Stateless WebSocket gateway (Gin + gorilla/websocket)
-2. **chat-svc** - Stateless chat message processor
-3. **presence-svc** - Stateless presence and receipt processor
-4. **PostgreSQL** - Message and user persistence
-5. **Redis** - Connection registry, presence cache, group members
-6. **RabbitMQ** - Message queue for async processing
-7. **MinIO** - S3-compatible object storage for media
+1.  **Web Client** - Single Page Application (React + Vite)
+2.  **Gateway** - WebSocket & HTTP Gateway (Gin + gorilla/websocket)
+3.  **Chat Service** - Core business logic and persistence
+4.  **Presence Service** - Status management
+5.  **PostgreSQL** - Primary data store (Users, Chats, Messages)
+6.  **Redis** - Hot cache (Sessions, Presence, Websocket Routing)
+7.  **RabbitMQ** - Message broker for async events and fan-out
+8.  **MinIO** - Object storage for media
 
 ### Tech Stack
 
-- Go 1.22
-- Gin (HTTP router)
-- gorilla/websocket
-- PostgreSQL 15
-- Redis 7
-- RabbitMQ 3.12
-- MinIO (S3 compatible storage)
-- AWS SDK v2
-- GORM (ORM)
-- Prometheus + Grafana (observability)
+**Backend**
+-   Go 1.22
+-   Gin (HTTP), Gorilla (WS)
+-   PostgreSQL 15, Redis 7, RabbitMQ 3.12
+-   MinIO, AWS SDK v2
+-   GORM, Zerolog, OpenTelemetry
 
-## Performance Targets
+**Frontend**
+-   React 19
+-   TypeScript
+-   Vite
+-   Tailwind CSS
+-   Zustand (State)
+-   TanStack Query (Data Fetching)
 
-| Metric | Target |
-|--------|--------|
-| p50 latency | ≤50 ms |
-| p99 latency | ≤200 ms |
-| Concurrent sockets | 10,000 |
-| Gateway RAM | ≤40 MB / 5k sockets |
-
-## Quick Start
+## Quick Start (Manual)
 
 ### Prerequisites
 
-- Go 1.22+
-- Docker & Docker Compose
-- (Optional) buf CLI for protobuf generation
+-   Go 1.22+
+-   Node.js 18+
+-   Docker & Docker Compose
 
-### Local Development
+### 1. Start Infrastructure
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/ambarg/mini-telegram.git
-cd mini-telegram
+docker-compose up -d postgres redis rabbitmq minio createbuckets
 ```
 
-2. Generate JWT keys:
-```bash
-mkdir -p secrets
-openssl ecparam -genkey -name prime256v1 -noout -out secrets/es256.key
-```
+### 2. Backend Setup
 
-3. Copy environment file:
 ```bash
-cp .env.example .env
-```
+# Generate Keys
+mkdir -p keys
+openssl ecparam -genkey -name prime256v1 -noout -out keys/private.pem
+openssl ec -in keys/private.pem -pubout -out keys/public.pem
 
-4. Start services:
-```bash
-docker-compose up -d postgres redis rabbitmq
-```
-
-5. Run database migrations:
-```bash
-# Install goose
+# Migrations
 go install github.com/pressly/goose/v3/cmd/goose@latest
+export DSN="host=localhost user=user password=pgpass dbname=minitelegram port=5432 sslmode=disable"
+goose -dir db/migrations postgres "$DSN" up
 
-# Run migrations
-goose -dir db/migrations postgres "postgres://user:pgpass@localhost:5432/minitelegram?sslmode=disable" up
-```
-
-6. Run the gateway:
-```bash
+# Run Gateway
+export REDIS_ADDR="localhost:6379"
+export AMQP_URL="amqp://guest:guest@localhost:5672/"
+export JWT_PRIVATE_KEY_PATH="keys/private.pem"
 go run cmd/gateway/main.go
 ```
 
-7. Run workers:
-```bash
-# Terminal 1
-go run cmd/chat-svc/main.go
-
-# Terminal 2
-go run cmd/presence-svc/main.go
-```
-
-### Docker Compose (All Services)
+### 3. Frontend Setup
 
 ```bash
-docker-compose up --build
+cd web
+npm install
+npm run dev
 ```
 
-Access:
-- Gateway API: http://localhost:8080
-- Swagger UI: http://localhost:8080/swagger/index.html
-- MinIO Console: http://localhost:9001 (user: minioadmin, pass: minioadmin)
-- RabbitMQ Management: http://localhost:15672 (guest/guest)
+Access the web client at `http://localhost:5173`.
 
-## API Endpoints
+## API Documentation
 
-### Authentication
+The backend exposes a Swagger UI at `http://localhost:8080/swagger/index.html`.
 
-**Register:**
-```bash
-POST /v1/auth/register
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "SecurePass123"
-}
-```
-
-**Login:**
-```bash
-POST /v1/auth/login
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "SecurePass123"
-}
-```
-
-**Refresh Token:**
-```bash
-POST /v1/auth/refresh
-Cookie: refreshToken=<token>
-```
-
-### Chats
-
-**Get Chats:**
-```bash
-GET /v1/chats
-Authorization: Bearer <accessToken>
-```
-
-**Create Chat:**
-```bash
-POST /v1/chats
-Authorization: Bearer <accessToken>
-Content-Type: application/json
-
-{
-  "type": 2,
-  "memberIds": [2, 3, 4],
-  "title": "My Awesome Group"
-}
-```
-
-**Update Group Info:**
-```bash
-PATCH /v1/chats/:id
-Authorization: Bearer <accessToken>
-Content-Type: application/json
-
-{
-  "title": "New Title"
-}
-```
-
-**Promote Member:**
-```bash
-POST /v1/chats/:id/members/:userId/promote
-Authorization: Bearer <accessToken>
-```
-
-**Demote Member:**
-```bash
-POST /v1/chats/:id/members/:userId/demote
-Authorization: Bearer <accessToken>
-```
-
-**Invite to Chat:**
-```bash
-POST /v1/chats/:id/invite
-Authorization: Bearer <accessToken>
-Content-Type: application/json
-
-{
-  "userId": 123
-}
-```
-
-**Leave Chat:**
-```bash
-DELETE /v1/chats/:id/members
-Authorization: Bearer <accessToken>
-```
-
-**Kick Member:**
-```bash
-DELETE /v1/chats/:id/members/:userId
-Authorization: Bearer <accessToken>
-```
-
-### Media
-
-**Get Upload URL:**
-```bash
-POST /v1/uploads/presigned
-Authorization: Bearer <accessToken>
-Content-Type: application/json
-
-{
-  "filename": "image.jpg",
-  "contentType": "image/jpeg"
-}
-```
-Response:
-```json
-{
-  "uploadUrl": "http://localhost:9000/...",
-  "objectKey": "uploads/1/uuid.jpg"
-}
-```
-
-### WebSocket
-
-Connect to WebSocket:
-```
-wss://localhost:8080/v1/ws?token=<accessToken>&device=web
-```
-
-Send message:
-```json
-{
-  "type": "SendMessage",
-  "uuid": "client-generated-uuid",
-  "chatId": 1,
-  "body": "Hello, World!"
-}
-```
-
-Send Typing Indicator:
-```json
-{
-  "type": "Typing",
-  "chatId": 1
-}
-```
-
-Send Read Receipt:
-```json
-{
-  "type": "Read",
-  "chatId": 1,
-  "messageId": 100
-}
-```
-
-### Devices
-
-**Register Device:**
-```bash
-POST /v1/devices
-Authorization: Bearer <accessToken>
-Content-Type: application/json
-
-{
-  "token": "device-push-token",
-  "platform": "ios"
-}
-```
-
-## Testing
-
-### Unit Tests
-
-```bash
-go test ./...
-```
-
-### Integration Tests
-
-```bash
-go test -tags=integration ./...
-```
-
-### Load Testing (k6)
-
-```bash
-# Install k6
-brew install k6  # macOS
-# or download from https://k6.io/
-
-# Run load test
-k6 run load/k6-ws.js
-```
-
-### Coverage
-
-```bash
-go test -coverprofile=cover.out ./...
-go tool cover -html=cover.out -o cover.html
-```
-
-## Database Migrations
-
-```bash
-# Up
-goose -dir db/migrations postgres "$DSN" up
-
-# Down
-goose -dir db/migrations postgres "$DSN" down
-
-# Status
-goose -dir db/migrations postgres "$DSN" status
-```
-
-## Observability
-
-### Metrics
-
-Prometheus metrics available at `/metrics`:
-- `gateway_msg_sent_total` - Total messages sent
-- `gateway_delivery_duration_seconds` - Message delivery latency histogram
-- `gateway_ws_connections` - Active WebSocket connections
-- `go_goroutines` - Active goroutines
-
-### Logs
-
-Structured JSON logs using zerolog:
-```json
-{
-  "level": "info",
-  "time": 1234567890,
-  "service": "gateway",
-  "user_id": 123,
-  "chat_id": 456,
-  "latency": 45,
-  "message": "message sent"
-}
-```
-
-## Deployment
-
-### Docker
-
-Build images:
-```bash
-docker build -f Dockerfile.gateway -t gateway:latest .
-docker build -f Dockerfile.chat-svc -t chat-svc:latest .
-docker build -f Dockerfile.presence-svc -t presence-svc:latest .
-```
-
-### Kubernetes (k3s)
-
-See deployment configurations in `/build` directory.
-
-### CI/CD
-
-GitHub Actions workflow in `.github/workflows/deploy.yml`:
-1. Run tests
-2. Build Docker images
-3. Push to GitHub Container Registry
-4. Deploy to k3s cluster
-
-## Security
-
-- JWT tokens with ES256 (ECDSA P-256)
-- Access token: 15 minutes
-- Refresh token: 7 days (HttpOnly cookie)
-- bcrypt password hashing (cost 12)
-- Rate limiting on auth endpoints (5 req/min)
-- Rate limiting on WebSocket connections (20 conn/min)
-- TLS 1.3 only in production
-- Input validation on all endpoints
-
-## Performance Optimization
-
-- Connection pooling (PostgreSQL, Redis)
-- RabbitMQ lazy queues
-- Redis caching for group members and presence
-- Batch processing for read receipts (50ms window)
-- Binary protobuf frames (5× smaller than JSON)
-- Stateless services for horizontal scaling
+Key Endpoints:
+-   `POST /v1/auth/register` - Create account
+-   `POST /v1/auth/login` - Get JWT
+-   `GET /v1/chats` - List chats
+-   `POST /v1/chats` - Create chat
+-   `GET /v1/ws` - WebSocket connection
 
 ## License
 
-MIT License - see LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `go test ./...`
-5. Submit a pull request
-
-## Documentation
-
-See `/docs` directory for detailed documentation:
-- Architecture overview
-- API specification
-- Database schema
-- WebSocket protocol
-- Deployment guide
-- Testing strategy
-- Troubleshooting guide
+MIT License.

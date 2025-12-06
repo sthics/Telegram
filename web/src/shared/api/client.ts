@@ -3,7 +3,7 @@ import { useAuthStore } from '@/features/auth/store';
 
 // Create Axios instance
 export const api = axios.create({
-    baseURL: '/v1', // Proxy will handle this in dev, Nginx in prod
+    baseURL: (import.meta.env.VITE_API_URL || '') + '/v1',
     headers: {
         'Content-Type': 'application/json',
     },

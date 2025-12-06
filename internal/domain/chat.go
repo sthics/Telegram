@@ -26,6 +26,8 @@ type Chat struct {
 	Type      int16     `json:"type"`
 	Title     string    `json:"title,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+	Name      string    `json:"name,omitempty"` // Computed field
+	Online    bool      `json:"online,omitempty"` // Computed field for private chats
 }
 
 // ChatMember represents a user in a chat
@@ -35,6 +37,7 @@ type ChatMember struct {
 	Role          Role      `json:"role"`
 	LastReadMsgID int64     `json:"last_read_msg_id"`
 	JoinedAt      time.Time `json:"joined_at"`
+	User          *User     `json:"user,omitempty"`
 }
 
 // Message represents a chat message
@@ -47,6 +50,7 @@ type Message struct {
 	ReplyToID *int64    `json:"reply_to_id,omitempty"`
 	Reactions []byte    `json:"reactions"` // JSONB
 	CreatedAt time.Time `json:"created_at"`
+	Status    int16     `json:"status"` // 1=Sent, 2=Read
 }
 
 // Receipt status
@@ -93,4 +97,5 @@ type ChatRepository interface {
 	
 	AddDeviceToken(ctx context.Context, token *DeviceToken) error
 	GetDeviceTokens(ctx context.Context, userID int64) ([]string, error)
+	GetPrivateChatBetweenUsers(ctx context.Context, userA, userB int64) (*Chat, error)
 }

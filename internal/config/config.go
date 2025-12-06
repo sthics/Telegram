@@ -44,6 +44,7 @@ type Config struct {
 	// Rate Limiting
 	LoginRateLimit int `envconfig:"LOGIN_RATE_LIMIT" default:"5"` // requests per minute per IP
 	WSRateLimit    int `envconfig:"WS_RATE_LIMIT" default:"20"`   // connections per minute per IP
+	AllowedOrigins []string `envconfig:"ALLOWED_ORIGINS" default:"http://localhost:3000,http://localhost:5173"`
 
 	// Object Storage (S3/MinIO)
 	ObjectStoreEndpoint  string `envconfig:"OBJECT_STORE_ENDPOINT" default:"http://minio:9000"`

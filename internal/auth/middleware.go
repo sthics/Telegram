@@ -56,7 +56,8 @@ func extractToken(c *gin.Context) string {
 		return parts[1]
 	}
 
-	return ""
+	// Fallback to query param (for WebSocket)
+	return c.Query("token")
 }
 
 // GetUserID retrieves the user ID from the Gin context

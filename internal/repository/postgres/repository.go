@@ -98,6 +98,28 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	}
 	return dao.ToDomain(), nil
 }
+func (r *UserRepository) SearchUsers(ctx context.Context, query string, limit, offset int) ([]domain.User, error) {
+	if query == "" {
+		return []domain.User{}, nil
+	}
+
+	var daos []UserDAO
+	// Search by email (partial match)
+	err := r.db.WithContext(ctx).
+		Where("email LIKE ?", "%"+query+"%").
+		Limit(limit).
+		Offset(offset).
+		Find(&daos).Error
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]domain.User, len(daos))
+	for i, dao := range daos {
+		users[i] = *dao.ToDomain()
+	}
+	return users, nil
+}
 
 // ChatRepository implementation
 type ChatRepository struct {
@@ -171,7 +193,7 @@ func (r *ChatRepository) RemoveMember(ctx context.Context, chatID, userID int64)
 
 func (r *ChatRepository) GetChatMembers(ctx context.Context, chatID int64) ([]domain.ChatMember, error) {
 	var daos []ChatMemberDAO
-	if err := r.db.WithContext(ctx).Where("chat_id = ?", chatID).Find(&daos).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("User").Where("chat_id = ?", chatID).Find(&daos).Error; err != nil {
 		return nil, err
 	}
 
@@ -254,4 +276,27 @@ func (r *ChatRepository) GetDeviceTokens(ctx context.Context, userID int64) ([]s
 		Where("user_id = ?", userID).
 		Pluck("token", &tokens).Error
 	return tokens, err
+}
+
+func (r *ChatRepository) GetPrivateChatBetweenUsers(ctx context.Context, userA, userB int64) (*domain.Chat, error) {
+	var dao ChatDAO
+	// Find a chat of type 1 (Direct) that has both members
+	// This query assumes only 2 members in Type 1 chat, or at least matching these two
+	err := r.db.WithContext(ctx).
+		Raw(`
+			SELECT c.* FROM chats c
+			JOIN chat_members cm1 ON c.id = cm1.chat_id
+			JOIN chat_members cm2 ON c.id = cm2.chat_id
+			WHERE c.type = ? AND cm1.user_id = ? AND cm2.user_id = ?
+			LIMIT 1
+		`, domain.ChatTypeDirect, userA, userB).
+		Scan(&dao).Error
+
+	if err != nil {
+		return nil, err
+	}
+	if dao.ID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return dao.ToDomain(), nil
 }

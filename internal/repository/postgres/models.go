@@ -65,16 +65,21 @@ type ChatMemberDAO struct {
 	Role          string    `gorm:"default:'member'"`
 	LastReadMsgID int64     `gorm:"default:0"`
 	JoinedAt      time.Time `gorm:"default:now()"`
+	User          UserDAO   `gorm:"foreignKey:UserID"`
 }
 
 func (m *ChatMemberDAO) ToDomain() *domain.ChatMember {
-	return &domain.ChatMember{
+	dm := &domain.ChatMember{
 		ChatID:        m.ChatID,
 		UserID:        m.UserID,
 		Role:          domain.Role(m.Role),
 		LastReadMsgID: m.LastReadMsgID,
 		JoinedAt:      m.JoinedAt,
 	}
+	if m.User.ID != 0 {
+		dm.User = m.User.ToDomain()
+	}
+	return dm
 }
 
 func FromDomainChatMember(m *domain.ChatMember) *ChatMemberDAO {
@@ -130,7 +135,7 @@ type ReceiptDAO struct {
 	MsgID  int64     `gorm:"primaryKey"`
 	UserID int64     `gorm:"primaryKey"`
 	Status int16     `gorm:"not null;check:status IN (1,2,3)"`
-	Ts     time.Time `gorm:"default:now()"`
+	CreatedAt     time.Time `gorm:"default:now()"`
 }
 
 func (r *ReceiptDAO) ToDomain() *domain.Receipt {
@@ -138,7 +143,7 @@ func (r *ReceiptDAO) ToDomain() *domain.Receipt {
 		MsgID:  r.MsgID,
 		UserID: r.UserID,
 		Status: r.Status,
-		Ts:     r.Ts,
+		Ts:     r.CreatedAt,
 	}
 }
 
@@ -147,7 +152,7 @@ func FromDomainReceipt(r *domain.Receipt) *ReceiptDAO {
 		MsgID:  r.MsgID,
 		UserID: r.UserID,
 		Status: r.Status,
-		Ts:     r.Ts,
+		CreatedAt:     r.Ts,
 	}
 }
 

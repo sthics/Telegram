@@ -134,12 +134,8 @@ func (r *CacheRepository) GetPresence(ctx context.Context, userID int64) (online
 		return false, -timestamp, nil
 	}
 
-	// Consider online if last seen within 60 seconds
-	if time.Since(time.Unix(timestamp, 0)) < 60*time.Second {
-		return true, timestamp, nil
-	}
-
-	return false, timestamp, nil
+	// Consider online if timestamp is positive (relying on Redis TTL for expiry)
+	return true, timestamp, nil
 }
 
 // AddGroupMembers adds members to a group cache
