@@ -38,14 +38,16 @@ type ChatDAO struct {
 	Type      int16     `gorm:"not null;check:type IN (1,2)"`
 	Title     string    `gorm:"size:255"`
 	CreatedAt time.Time `gorm:"default:now()"`
+	UnreadCount int64   `gorm:"->;column:unread_count"`
 }
 
 func (c *ChatDAO) ToDomain() *domain.Chat {
 	return &domain.Chat{
-		ID:        c.ID,
-		Type:      c.Type,
-		Title:     c.Title,
-		CreatedAt: c.CreatedAt,
+		ID:          c.ID,
+		Type:        c.Type,
+		Title:       c.Title,
+		CreatedAt:   c.CreatedAt,
+		UnreadCount: c.UnreadCount,
 	}
 }
 

@@ -34,14 +34,15 @@ func (s *Service) ProcessPushNotification(ctx context.Context, payload []byte) e
 	body, _ := msg["body"].(string)
 
 	// Get chat members
-	members, err := s.chatRepo.GetMembers(ctx, int64(chatID))
+	members, err := s.chatRepo.GetChatMembers(ctx, int64(chatID))
 	if err != nil {
 		return err
 	}
 
 	log.Info().Int64("chat_id", int64(chatID)).Msg("Processing message for push")
 
-	for _, memberID := range members {
+	for _, member := range members {
+		memberID := member.UserID
 		// Skip sender
 		if memberID == int64(senderID) {
 			continue

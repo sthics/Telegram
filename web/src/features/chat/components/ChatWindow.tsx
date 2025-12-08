@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Paperclip, MoreVertical, Loader2, Check, CheckCheck } from 'lucide-react';
+import { Send, Paperclip, MoreVertical, Loader2 } from 'lucide-react';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '@/features/auth/store';
 import { chatApi } from '../api';
 import type { Message } from '../types';
-import { clsx } from 'clsx';
+
 import { Button } from '@/shared/components/Button';
 import { ChatInfoModal } from './ChatInfoModal';
+import { MessageBubble } from './MessageBubble';
 
 export const ChatWindow = () => {
     const activeChat = useChatStore((state) => state.activeChat);
@@ -24,14 +25,57 @@ export const ChatWindow = () => {
         enabled: !!activeChat,
     });
 
-    // Mark as read
-    useEffect(() => {
-        if (activeChat && messages && messages.length > 0) {
-            const latestMsg = messages[0]; // Backend returns DESC, so first is latest
-            if (latestMsg) {
-                chatApi.markRead(activeChat.id, latestMsg.id);
+    // Fetch members for count
+    const { data: members } = useQuery({
+        queryKey: ['chatMembers', activeChat?.id],
+        queryFn: () => chatApi.getChatMembers(activeChat!.id),
+        enabled: !!activeChat && activeChat.type === 2,
+    });
+
+    // Mark as read logic
+    const observer = useRef<IntersectionObserver | null>(null);
+    const lastReadIdRef = useRef<number>(0);
+
+    const handleObserver = (entries: IntersectionObserverEntry[]) => {
+        if (!activeChat) return;
+
+        entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+                const msgId = Number(entry.target.getAttribute('data-message-id'));
+                const message = messages?.find(m => m.id === msgId);
+
+                // If it's not my message and I haven't read it yet
+                if (message && message.user_id !== currentUser?.id) {
+                    // messages?.find(...) check above ensures we have the message object
+                    if (msgId > lastReadIdRef.current) {
+                        lastReadIdRef.current = msgId;
+                        chatApi.markRead(activeChat.id, msgId).then(() => {
+                            // Refresh chat list to update unread counts
+                            queryClient.invalidateQueries({ queryKey: ['chats'] });
+                        });
+                    }
+                }
             }
-        }
+        });
+    };
+
+    useEffect(() => {
+        // Reset lastReadId when chat changes
+        lastReadIdRef.current = 0;
+    }, [activeChat?.id]);
+
+    useEffect(() => {
+        if (!messages) return;
+
+        observer.current = new IntersectionObserver(handleObserver, {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.5,
+        });
+
+        // Observe elements
+        // We need to attach ref to message elements. 
+        // We'll trust the callback ref in MessageBubble
     }, [messages, activeChat]);
 
     const sendMessageMutation = useMutation({
@@ -112,7 +156,7 @@ export const ChatWindow = () => {
                         <h2 className="font-semibold text-text-primary">{activeChat.name || 'Unknown Chat'}</h2>
                         {activeChat.type === 2 && (
                             <span className="text-xs text-text-tertiary">
-                                Group Chat
+                                {members ? `${members.length} members` : 'Group Chat'}
                             </span>
                         )}
                         {activeChat.type === 1 && activeChat.online && (
@@ -140,36 +184,17 @@ export const ChatWindow = () => {
                         <Loader2 className="w-6 h-6 animate-spin text-brand-primary" />
                     </div>
                 ) : (
-                    messages?.slice().reverse().map((msg) => { // Reverse because backend returns DESC
-                        const isMyMessage = msg.user_id === currentUser?.id;
-                        return (
-                            <div key={msg.id} className={clsx('flex', isMyMessage ? 'justify-end' : 'justify-start')}>
-                                <div
-                                    className={clsx(
-                                        'px-4 py-2 max-w-[65%] shadow-sm',
-                                        isMyMessage
-                                            ? 'bg-brand-primary text-white rounded-lg rounded-tr-none'
-                                            : 'bg-surface text-text-primary rounded-lg rounded-tl-none'
-                                    )}
-                                >
-                                    <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
-                                    <div className={clsx(
-                                        "flex items-center justify-end gap-1 mt-1",
-                                        isMyMessage ? "text-white/70" : "text-text-secondary"
-                                    )}>
-                                        <span className="text-[11px]">
-                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                        {isMyMessage && (
-                                            msg.status === 3 ?
-                                                <CheckCheck className="w-3 h-3" /> :
-                                                <Check className="w-3 h-3" />
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })
+                    messages?.slice().reverse().map((msg) => (
+                        <MessageBubble
+                            key={msg.id}
+                            message={msg}
+                            innerRef={(node) => {
+                                if (node && observer.current) {
+                                    observer.current.observe(node);
+                                }
+                            }}
+                        />
+                    ))
                 )}
                 <div ref={messagesEndRef} />
             </div>

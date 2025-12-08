@@ -46,6 +46,20 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
                         return [message, ...old];
                     });
                     queryClient.invalidateQueries({ queryKey: ['chats'] });
+                } else if (data.type === 'ReadReceipt') {
+                    const { chatId, msgId } = data;
+                    console.log('WS: Read receipt for chat', chatId, 'up to', msgId);
+
+                    queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
+                        if (!old) return old;
+                        return old.map(msg => {
+                            // If message is older than or equal to the read receipt and not yet read
+                            if (msg.id <= msgId && msg.status !== 3) {
+                                return { ...msg, status: 3 };
+                            }
+                            return msg;
+                        });
+                    });
                 }
             } catch (error) {
                 console.error('WebSocket Error:', error);

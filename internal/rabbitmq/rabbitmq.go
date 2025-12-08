@@ -138,85 +138,7 @@ func (c *Client) DeclareSharedChatQueue() error {
 	return nil
 }
 
-// DeclareChatQueue declares a queue for a specific chat
-func (c *Client) DeclareChatQueue(chatID int64) error {
-	queueName := fmt.Sprintf("chat.%d", chatID)
-	routingKey := fmt.Sprintf("%d", chatID)
 
-	// Declare queue with lazy mode and TTL
-	args := amqp.Table{
-		"x-queue-mode": "lazy",
-		"x-message-ttl": 86400000, // 24 hours in milliseconds
-	}
-
-	_, err := c.channel.QueueDeclare(
-		queueName, // name
-		true,      // durable
-		false,     // delete when unused
-		false,     // exclusive
-		false,     // no-wait
-		args,      // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("failed to declare queue: %w", err)
-	}
-
-	// Bind queue to exchange
-	if err := c.channel.QueueBind(
-		queueName,    // queue name
-		routingKey,   // routing key
-		"chat.topic", // exchange
-		false,        // no-wait
-		nil,          // arguments
-	); err != nil {
-		return fmt.Errorf("failed to bind queue: %w", err)
-	}
-
-	return nil
-}
-
-// PublishToChatQueue publishes a message to a chat queue
-func (c *Client) PublishToChatQueue(ctx context.Context, chatID int64, body []byte) error {
-	routingKey := fmt.Sprintf("%d", chatID)
-
-	// Enable publisher confirms
-	if err := c.channel.Confirm(false); err != nil {
-		return fmt.Errorf("failed to enable publisher confirms: %w", err)
-	}
-
-	confirms := c.channel.NotifyPublish(make(chan amqp.Confirmation, 1))
-
-	err := c.channel.PublishWithContext(
-		ctx,
-		"chat.topic", // exchange
-		routingKey,   // routing key
-		false,        // mandatory
-		false,        // immediate
-		amqp.Publishing{
-			ContentType:  "application/octet-stream",
-			Body:         body,
-			DeliveryMode: amqp.Persistent, // persistent messages
-			Timestamp:    time.Now(),
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to publish message: %w", err)
-	}
-
-	// Wait for confirmation with timeout
-	select {
-	case confirm := <-confirms:
-		if !confirm.Ack {
-			return fmt.Errorf("publish not acknowledged")
-		}
-	case <-time.After(500 * time.Millisecond):
-		return fmt.Errorf("publish confirmation timeout")
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	return nil
-}
 
 // PublishToDeliveryExchange publishes a delivery event
 func (c *Client) PublishToDeliveryExchange(ctx context.Context, chatID int64, body []byte) error {
@@ -240,27 +162,6 @@ func (c *Client) PublishToDeliveryExchange(ctx context.Context, chatID int64, bo
 	}
 
 	return nil
-}
-
-// ConsumeChatQueue starts consuming messages from a chat queue
-// Deprecated: Use ConsumeSharedChatQueue for better scalability
-func (c *Client) ConsumeChatQueue(chatID int64, consumerTag string) (<-chan amqp.Delivery, error) {
-	queueName := fmt.Sprintf("chat.%d", chatID)
-
-	msgs, err := c.channel.Consume(
-		queueName,   // queue
-		consumerTag, // consumer tag
-		false,       // auto-ack (we'll manually ack)
-		false,       // exclusive
-		false,       // no-local
-		false,       // no-wait
-		nil,         // args
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start consuming: %w", err)
-	}
-
-	return msgs, nil
 }
 
 // ConsumeSharedChatQueue starts consuming from the shared chat messages queue

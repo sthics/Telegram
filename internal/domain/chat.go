@@ -28,6 +28,7 @@ type Chat struct {
 	CreatedAt time.Time `json:"created_at"`
 	Name      string    `json:"name,omitempty"` // Computed field
 	Online    bool      `json:"online,omitempty"` // Computed field for private chats
+	UnreadCount int64   `json:"unreadCount"` // Computed field
 }
 
 // ChatMember represents a user in a chat

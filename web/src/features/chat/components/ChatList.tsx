@@ -17,6 +17,8 @@ export const ChatList = () => {
         queryFn: chatApi.getChats,
     });
 
+
+
     return (
         <div className="flex flex-col h-full border-r border-border-subtle bg-surface">
             {/* Header */}
@@ -64,14 +66,19 @@ export const ChatList = () => {
                                     {chat.name ? chat.name.charAt(0) : 'U'}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-baseline mb-1">
+                                    <div className="flex justify-between items-baseline mb-1 gap-2">
                                         <h3 className={clsx(
-                                            "text-sm font-medium truncate",
+                                            "text-sm font-medium truncate flex-1",
                                             activeChat?.id === chat.id ? "text-brand-primary" : "text-text-primary"
                                         )}>
                                             {chat.name || 'Unknown Chat'}
                                         </h3>
-                                        <span className="text-xs text-text-tertiary whitespace-nowrap ml-2">
+                                        {chat.unreadCount && chat.unreadCount > 0 ? (
+                                            <span className="bg-red-500 text-white text-[10px] mobile:text-[11px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-sm z-10">
+                                                {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                                            </span>
+                                        ) : null}
+                                        <span className="text-xs text-text-tertiary whitespace-nowrap shrink-0">
                                             {chat.lastMessage ? new Date(chat.lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                         </span>
                                     </div>

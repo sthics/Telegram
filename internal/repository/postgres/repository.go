@@ -156,6 +156,8 @@ func (r *ChatRepository) GetChat(ctx context.Context, id int64) (*domain.Chat, e
 func (r *ChatRepository) GetUserChats(ctx context.Context, userID int64) ([]domain.Chat, error) {
 	var daos []ChatDAO
 	if err := r.db.WithContext(ctx).
+		Table("chats").
+		Select("chats.*, (SELECT COUNT(*) FROM messages WHERE messages.chat_id = chats.id AND messages.id > chat_members.last_read_msg_id AND messages.user_id != chat_members.user_id) as unread_count").
 		Joins("JOIN chat_members ON chat_members.chat_id = chats.id").
 		Where("chat_members.user_id = ?", userID).
 		Find(&daos).Error; err != nil {
@@ -260,7 +262,7 @@ func (r *ChatRepository) CreateReceipt(ctx context.Context, receipt *domain.Rece
 func (r *ChatRepository) UpdateLastReadMessage(ctx context.Context, chatID, userID, msgID int64) error {
 	return r.db.WithContext(ctx).
 		Model(&ChatMemberDAO{}).
-		Where("chat_id = ? AND user_id = ?", chatID, userID).
+		Where("chat_id = ? AND user_id = ? AND last_read_msg_id < ?", chatID, userID, msgID).
 		Update("last_read_msg_id", msgID).Error
 }
 
