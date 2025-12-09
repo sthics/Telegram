@@ -266,6 +266,7 @@ func (s *Service) ProcessMessage(ctx context.Context, msg *domain.Message, clien
 		"chat_id":    msg.ChatID,
 		"user_id":    msg.UserID,
 		"body":       msg.Body,
+		"media_url":  msg.MediaURL,
 		"created_at": msg.CreatedAt, // Serializes to ISO string by default
 	})
 

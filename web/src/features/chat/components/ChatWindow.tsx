@@ -78,9 +78,11 @@ export const ChatWindow = () => {
         // We'll trust the callback ref in MessageBubble
     }, [messages, activeChat]);
 
+    // Send Message Mutation
     const sendMessageMutation = useMutation({
-        mutationFn: (text: string) => chatApi.sendMessage(activeChat!.id, text),
-        onMutate: async (text) => {
+        mutationFn: ({ text, mediaUrl }: { text: string; mediaUrl?: string }) =>
+            chatApi.sendMessage(activeChat!.id, text, mediaUrl),
+        onMutate: async ({ text, mediaUrl }) => {
             await queryClient.cancelQueries({ queryKey: ['messages', activeChat!.id] });
 
             const previousMessages = queryClient.getQueryData<Message[]>(['messages', activeChat!.id]);
@@ -90,6 +92,7 @@ export const ChatWindow = () => {
                 chat_id: activeChat!.id,
                 user_id: currentUser!.id,
                 body: text,
+                media_url: mediaUrl,
                 created_at: new Date().toISOString(),
                 reactions: [],
                 status: 1,
@@ -101,7 +104,7 @@ export const ChatWindow = () => {
 
             return { previousMessages };
         },
-        onError: (_err, _text, context) => {
+        onError: (_err, _vars, context) => {
             if (context?.previousMessages) {
                 queryClient.setQueryData(['messages', activeChat!.id], context.previousMessages);
             }
@@ -112,6 +115,52 @@ export const ChatWindow = () => {
         },
     });
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+            // 1. Get presigned URL
+            const { uploadUrl, objectKey } = await chatApi.getPresignedUrl(file.name, file.type || 'application/octet-stream');
+
+            // 2. Upload file
+            await chatApi.uploadFileToUrl(uploadUrl, file, file.type || 'application/octet-stream');
+
+            // 3. Send message with media_url
+            // We use the objectKey? No, we probably need the full public URL or relative path.
+            // The backend returns "objectKey" like "uploads/123/abc.png".
+            // Since we are using MinIO locally, the public URL is http://localhost:9000/minitelegram/<key>? 
+            // Wait, docker-compose says bucket is `chat-media`.
+            // Public URL: http://localhost:9000/chat-media/<key>
+            // BUT for the frontend to render it, it needs to access MinIO. Does frontend have access?
+            // "ports: 9000:9000". Yes.
+            // But we need the Base URL.
+            // Ideally backend returns the Full Public URL in `GetUploadURL`.
+            // But `media/service.go` returns `objectName`.
+            // Let's assume for now we construct it or backend serves it via a proxy?
+            // Let's try sending the `objectKey` as `media_url` and see if `MessageBubble` can render it? 
+            // No, `img src` needs a URL.
+            // Let's construct it: `http://localhost:9000/chat-media/${objectKey}`.
+            // For production this is bad, but for MVP/Local it works.
+            // Better: update backend to return `publicUrl`?
+            // Let's rely on the fact that `s3/repository.go` `PutFile` (which we removed) was returning full URL.
+            // But here we use presigned.
+            // Let's construct it here for now.
+            const publicUrl = `http://localhost:9000/chat-media/${objectKey}`;
+
+            sendMessageMutation.mutate({ text: file.name, mediaUrl: publicUrl });
+
+        } catch (error) {
+            console.error('Failed to upload file:', error);
+            // Show error toast
+        } finally {
+            // Reset input
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
     // Scroll to bottom
     useEffect(() => {
         if (messagesEndRef.current) {
@@ -121,7 +170,7 @@ export const ChatWindow = () => {
 
     const handleSendMessage = () => {
         if (!message.trim()) return;
-        sendMessageMutation.mutate(message);
+        sendMessageMutation.mutate({ text: message });
         setMessage('');
     };
 
@@ -202,8 +251,20 @@ export const ChatWindow = () => {
             {/* Input Area */}
             <div className="p-4 bg-surface border-t border-border-subtle shrink-0">
                 <div className="flex items-center gap-2 max-w-4xl mx-auto">
-                    <Button variant="ghost" size="icon" className="text-text-secondary hover:text-text-primary">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-text-secondary hover:text-text-primary"
+                        onClick={() => fileInputRef.current?.click()}
+                    >
                         <Paperclip className="w-5 h-5" />
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            className="hidden"
+                            onChange={handleFileSelect}
+                            accept="image/*"
+                        />
                     </Button>
 
                     <div className="flex-1 bg-app rounded-md border border-border-subtle focus-within:border-brand-primary transition-colors">

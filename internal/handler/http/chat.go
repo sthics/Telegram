@@ -170,7 +170,8 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	var req struct {
-		Body string `json:"body" binding:"required"`
+		Body     string `json:"body" binding:"required"`
+		MediaURL string `json:"mediaUrl"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -180,9 +181,10 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	userID, _ := auth.GetUserID(c)
 
 	msg := &domain.Message{
-		ChatID: chatID,
-		UserID: userID,
-		Body:   req.Body,
+		ChatID:   chatID,
+		UserID:   userID,
+		Body:     req.Body,
+		MediaURL: req.MediaURL,
 	}
 
 	// We pass empty clientUUID for REST API for now

@@ -167,6 +167,19 @@ func (r *ChatRepository) GetUserChats(ctx context.Context, userID int64) ([]doma
 	chats := make([]domain.Chat, len(daos))
 	for i, dao := range daos {
 		chats[i] = *dao.ToDomain()
+		
+		// Fetch last message
+		var msgDAO MessageDAO
+		if err := r.db.WithContext(ctx).
+			Where("chat_id = ?", dao.ID).
+			Order("created_at DESC").
+			Limit(1).
+			Find(&msgDAO).Error; err == nil && msgDAO.ID != 0 {
+			chats[i].LastMessage = msgDAO.ToDomain()
+			// Populate User for LastMessage if needed? 
+			// Frontend uses `lastMessage.body` and `created_at`. User not strictly needed for preview unless we show "Name: Body".
+			// Current UI just shows Body.
+		}
 	}
 	return chats, nil
 }

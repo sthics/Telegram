@@ -6,6 +6,7 @@ export interface Message {
     user_id: number;
     body: string;
     media_url?: string;
+    media_type?: string; // image, video, etc.
     reply_to_id?: number;
     reactions?: any; // JSONB
     created_at: string; // ISO string

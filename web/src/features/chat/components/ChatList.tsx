@@ -66,25 +66,37 @@ export const ChatList = () => {
                                     {chat.name ? chat.name.charAt(0) : 'U'}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-baseline mb-1 gap-2">
+                                    {/* Top Row: Name and Time */}
+                                    <div className="flex justify-between items-baseline mb-1">
                                         <h3 className={clsx(
-                                            "text-sm font-medium truncate flex-1",
-                                            activeChat?.id === chat.id ? "text-brand-primary" : "text-text-primary"
+                                            "text-sm truncate flex-1 pr-2",
+                                            chat.unreadCount && chat.unreadCount > 0 ? "font-bold text-text-primary" : "font-medium text-text-primary",
+                                            activeChat?.id === chat.id && "!text-brand-primary"
                                         )}>
                                             {chat.name || 'Unknown Chat'}
                                         </h3>
-                                        {chat.unreadCount && chat.unreadCount > 0 ? (
-                                            <span className="bg-red-500 text-white text-[10px] mobile:text-[11px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-sm z-10">
-                                                {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
-                                            </span>
-                                        ) : null}
-                                        <span className="text-xs text-text-tertiary whitespace-nowrap shrink-0">
+                                        <span className={clsx(
+                                            "text-xs whitespace-nowrap shrink-0",
+                                            chat.unreadCount && chat.unreadCount > 0 ? "text-brand-primary font-medium" : "text-text-tertiary"
+                                        )}>
                                             {chat.lastMessage ? new Date(chat.lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                         </span>
                                     </div>
-                                    <p className="text-sm text-text-secondary truncate">
-                                        {chat.lastMessage ? chat.lastMessage.body : 'No messages yet'}
-                                    </p>
+
+                                    {/* Bottom Row: Message and Badge */}
+                                    <div className="flex justify-between items-center gap-2">
+                                        <p className={clsx(
+                                            "text-sm truncate flex-1",
+                                            chat.unreadCount && chat.unreadCount > 0 ? "text-text-primary font-medium" : "text-text-secondary"
+                                        )}>
+                                            {chat.lastMessage ? chat.lastMessage.body : 'No messages yet'}
+                                        </p>
+                                        {chat.unreadCount && chat.unreadCount > 0 ? (
+                                            <span className="bg-brand-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shrink-0 shadow-sm animate-in zoom-in duration-200">
+                                                {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                                            </span>
+                                        ) : null}
+                                    </div>
                                 </div>
                             </div>
                         </div>

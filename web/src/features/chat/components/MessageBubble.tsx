@@ -27,7 +27,16 @@ export const MessageBubble = ({ message, innerRef }: MessageBubbleProps) => {
                         : 'bg-surface text-text-primary rounded-lg rounded-tl-none'
                 )}
             >
-                <p className="text-sm whitespace-pre-wrap">{message.body}</p>
+                {message.media_url && (
+                    <div className="mb-2">
+                        <img
+                            src={message.media_url}
+                            alt="attachment"
+                            className="rounded-md max-w-full h-auto object-cover max-h-64"
+                        />
+                    </div>
+                )}
+                {message.body && <p className="text-sm whitespace-pre-wrap">{message.body}</p>}
                 <div className={clsx(
                     "flex items-center justify-end gap-1 mt-1",
                     isMyMessage ? "text-white/70" : "text-text-secondary"

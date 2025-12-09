@@ -24,9 +24,27 @@ export const chatApi = {
         return response.data;
     },
 
-    sendMessage: async (chatId: number, body: string): Promise<{ messageId: number }> => {
-        const response = await api.post<{ messageId: number }>(`/chats/${chatId}/messages`, { body });
+    sendMessage: async (chatId: number, body: string, mediaUrl?: string): Promise<{ messageId: number }> => {
+        const response = await api.post<{ messageId: number }>(`/chats/${chatId}/messages`, { body, mediaUrl });
         return response.data;
+    },
+
+    getPresignedUrl: async (filename: string, contentType: string): Promise<{ uploadUrl: string; objectKey: string }> => {
+        const response = await api.post<{ uploadUrl: string; objectKey: string }>('/uploads/presigned', {
+            filename,
+            contentType,
+        });
+        return response.data;
+    },
+
+    uploadFileToUrl: async (url: string, file: File, contentType: string): Promise<void> => {
+        await fetch(url, {
+            method: 'PUT',
+            body: file,
+            headers: {
+                'Content-Type': contentType,
+            },
+        });
     },
 
     searchUsers: async (query: string): Promise<User[]> => {
