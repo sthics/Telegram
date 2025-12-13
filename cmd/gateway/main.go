@@ -224,6 +224,8 @@ func main() {
 		protected.POST("/uploads/presigned", mediaHandler.GetUploadURL)
 
 		// User routes
+		protected.GET("/users/me", userHandler.GetProfile)
+		protected.PATCH("/users/me", userHandler.UpdateProfile)
 		protected.GET("/users/:id/presence", userHandler.GetUserPresence)
 		protected.GET("/users", userHandler.SearchUsers)
 	}

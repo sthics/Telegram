@@ -47,11 +47,12 @@ type Config struct {
 	AllowedOrigins []string `envconfig:"ALLOWED_ORIGINS" default:"http://localhost:3000,http://localhost:5173"`
 
 	// Object Storage (S3/MinIO)
-	ObjectStoreEndpoint  string `envconfig:"OBJECT_STORE_ENDPOINT" default:"http://minio:9000"`
-	ObjectStoreRegion    string `envconfig:"OBJECT_STORE_REGION" default:"us-east-1"`
-	ObjectStoreBucket    string `envconfig:"OBJECT_STORE_BUCKET" default:"chat-media"`
-	ObjectStoreAccessKey string `envconfig:"OBJECT_STORE_ACCESS_KEY" default:"minioadmin"`
-	ObjectStoreSecretKey string `envconfig:"OBJECT_STORE_SECRET_KEY" default:"minioadmin"`
+	ObjectStoreEndpoint       string `envconfig:"OBJECT_STORE_ENDPOINT" default:"http://minio:9000"`
+	ObjectStorePublicEndpoint string `envconfig:"OBJECT_STORE_PUBLIC_ENDPOINT" default:"http://localhost:9000"`
+	ObjectStoreRegion         string `envconfig:"OBJECT_STORE_REGION" default:"us-east-1"`
+	ObjectStoreBucket         string `envconfig:"OBJECT_STORE_BUCKET" default:"chat-media"`
+	ObjectStoreAccessKey      string `envconfig:"OBJECT_STORE_ACCESS_KEY" default:"minioadmin"`
+	ObjectStoreSecretKey      string `envconfig:"OBJECT_STORE_SECRET_KEY" default:"minioadmin"`
 }
 
 // Load loads configuration from environment variables

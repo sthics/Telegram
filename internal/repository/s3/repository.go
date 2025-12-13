@@ -32,15 +32,26 @@ func New(ctx context.Context, cfg *config.Config) (*Repository, error) {
 		return nil, fmt.Errorf("failed to load aws config: %w", err)
 	}
 
-	// Create S3 client with custom endpoint resolver for MinIO
+	// Create main S3 client with internal endpoint for server-side operations
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(cfg.ObjectStoreEndpoint)
 		o.UsePathStyle = true // Required for MinIO
 	})
 
+	// Create separate presign client using PUBLIC endpoint for browser-accessible URLs
+	// This ensures presigned URLs are valid when accessed from the browser
+	publicEndpoint := cfg.ObjectStorePublicEndpoint
+	if publicEndpoint == "" {
+		publicEndpoint = cfg.ObjectStoreEndpoint // Fallback to internal endpoint
+	}
+	presignClient := s3.NewPresignClient(s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(publicEndpoint)
+		o.UsePathStyle = true
+	}))
+
 	return &Repository{
 		client:        client,
-		presignClient: s3.NewPresignClient(client),
+		presignClient: presignClient,
 		bucket:        cfg.ObjectStoreBucket,
 	}, nil
 }
@@ -59,3 +70,5 @@ func (r *Repository) GeneratePresignedURL(ctx context.Context, objectName string
 
 	return req.URL, nil
 }
+
+

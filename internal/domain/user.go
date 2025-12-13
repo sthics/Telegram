@@ -9,6 +9,9 @@ import (
 type User struct {
 	ID           int64     `json:"id"`
 	Email        string    `json:"email"`
+	Username     string    `json:"username,omitempty"`
+	AvatarURL    string    `json:"avatar_url,omitempty"`
+	Bio          string    `json:"bio,omitempty"`
 	PasswordHash string    `json:"-"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -19,4 +22,6 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id int64) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	SearchUsers(ctx context.Context, query string, limit, offset int) ([]User, error)
+	Update(ctx context.Context, user *User) error
 }
+

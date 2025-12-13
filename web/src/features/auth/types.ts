@@ -1,13 +1,12 @@
 export interface User {
     id: number;
-    username: string;
+    username?: string;
     email: string;
-    firstName?: string;
-    lastName?: string;
+    avatar_url?: string;
     bio?: string;
-    avatarUrl?: string;
-    lastSeen?: number; // Timestamp
+    created_at?: string;
 }
+
 
 export interface AuthResponse {
     accessToken: string;
@@ -28,3 +27,10 @@ export interface RegisterRequest {
     firstName?: string;
     lastName?: string;
 }
+
+export interface UpdateProfileRequest {
+    username?: string;
+    avatar_url?: string;
+    bio?: string;
+}
+

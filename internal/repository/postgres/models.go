@@ -10,6 +10,9 @@ import (
 type UserDAO struct {
 	ID           int64     `gorm:"primaryKey"`
 	Email        string    `gorm:"uniqueIndex;not null"`
+	Username     string    `gorm:"size:50"`
+	AvatarURL    string    `gorm:"column:avatar_url"`
+	Bio          string    ``
 	PasswordHash string    `gorm:"not null"`
 	CreatedAt    time.Time `gorm:"default:now()"`
 }
@@ -18,6 +21,9 @@ func (u *UserDAO) ToDomain() *domain.User {
 	return &domain.User{
 		ID:           u.ID,
 		Email:        u.Email,
+		Username:     u.Username,
+		AvatarURL:    u.AvatarURL,
+		Bio:          u.Bio,
 		PasswordHash: u.PasswordHash,
 		CreatedAt:    u.CreatedAt,
 	}
@@ -27,10 +33,14 @@ func FromDomainUser(u *domain.User) *UserDAO {
 	return &UserDAO{
 		ID:           u.ID,
 		Email:        u.Email,
+		Username:     u.Username,
+		AvatarURL:    u.AvatarURL,
+		Bio:          u.Bio,
 		PasswordHash: u.PasswordHash,
 		CreatedAt:    u.CreatedAt,
 	}
 }
+
 
 // ChatDAO represents a chat room
 type ChatDAO struct {

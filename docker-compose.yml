@@ -63,7 +63,8 @@ services:
       - .env
     environment:
       - OTEL_COLLECTOR_URL=jaeger:4317
-      - OBJECT_STORE_ENDPOINT=http://localhost:9000
+      - OBJECT_STORE_ENDPOINT=http://minio:9000
+      - OBJECT_STORE_PUBLIC_ENDPOINT=http://localhost:9000
     volumes:
       - ./secrets:/secrets:ro
     depends_on:

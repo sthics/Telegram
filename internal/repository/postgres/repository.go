@@ -104,9 +104,9 @@ func (r *UserRepository) SearchUsers(ctx context.Context, query string, limit, o
 	}
 
 	var daos []UserDAO
-	// Search by email (partial match)
+	// Search by email or username (partial match)
 	err := r.db.WithContext(ctx).
-		Where("email LIKE ?", "%"+query+"%").
+		Where("email LIKE ? OR username LIKE ?", "%"+query+"%", "%"+query+"%").
 		Limit(limit).
 		Offset(offset).
 		Find(&daos).Error
@@ -120,6 +120,12 @@ func (r *UserRepository) SearchUsers(ctx context.Context, query string, limit, o
 	}
 	return users, nil
 }
+
+func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
+	dao := FromDomainUser(user)
+	return r.db.WithContext(ctx).Model(dao).Select("username", "avatar_url", "bio").Updates(dao).Error
+}
+
 
 // ChatRepository implementation
 type ChatRepository struct {

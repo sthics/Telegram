@@ -1,18 +1,20 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus, Loader2, UserPlus } from 'lucide-react';
+import { Search, Plus, Loader2, UserPlus, Settings } from 'lucide-react';
 import { useChatStore } from '../stores/chatStore';
 import { chatApi } from '../api';
 import type { User } from '@/features/auth/types';
 import { clsx } from 'clsx';
 import { Button } from '@/shared/components/Button';
 import { CreateChatModal } from './CreateChatModal';
+import { ProfileSettings } from '@/features/auth/components/ProfileSettings';
 import { useAuthStore } from '@/features/auth/store';
 
 export const ChatList = () => {
     const { activeChat, setActiveChat } = useChatStore();
     const currentUser = useAuthStore((state) => state.user);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedQuery, setDebouncedQuery] = useState('');
     const queryClient = useQueryClient();
@@ -72,7 +74,12 @@ export const ChatList = () => {
         <div className="w-80 border-r border-border-subtle flex flex-col h-full bg-surface">
             {/* Header */}
             <div className="p-4 border-b border-border-subtle flex items-center justify-between shrink-0">
-                <h1 className="font-bold text-xl text-text-primary">Chats</h1>
+                <div className="flex items-center gap-2">
+                    <Button size="icon" variant="ghost" onClick={() => setIsProfileOpen(true)} title="Settings">
+                        <Settings className="w-5 h-5" />
+                    </Button>
+                    <h1 className="font-bold text-xl text-text-primary">Chats</h1>
+                </div>
                 <Button size="icon" variant="ghost" onClick={() => setIsCreateModalOpen(true)}>
                     <Plus className="w-5 h-5" />
                 </Button>
@@ -206,6 +213,11 @@ export const ChatList = () => {
             <CreateChatModal
                 isOpen={isCreateModalOpen}
                 onClose={() => setIsCreateModalOpen(false)}
+            />
+
+            <ProfileSettings
+                isOpen={isProfileOpen}
+                onClose={() => setIsProfileOpen(false)}
             />
         </div>
     );
