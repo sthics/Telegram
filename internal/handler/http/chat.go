@@ -25,6 +25,27 @@ type DeviceRequest struct {
 	Platform string `json:"platform" binding:"required,oneof=ios android web"`
 }
 
+// SendMessageRequest is the request body for sending a message
+type SendMessageRequest struct {
+	Body     string `json:"body" binding:"required"`
+	MediaURL string `json:"mediaUrl"`
+}
+
+// UpdateGroupRequest is the request body for updating group info
+type UpdateGroupRequest struct {
+	Title string `json:"title" binding:"required"`
+}
+
+// MarkReadRequest is the request body for marking a chat as read
+type MarkReadRequest struct {
+	LastReadID int64 `json:"lastReadId" binding:"required"`
+}
+
+// ReactionRequest is the request body for adding a reaction
+type ReactionRequest struct {
+	Emoji string `json:"emoji" binding:"required"`
+}
+
 type ChatHandler struct {
 	service *chat.Service
 }
@@ -158,7 +179,7 @@ func (h *ChatHandler) GetMessages(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        id   path      int64  true  "Chat ID"
-// @Param        request body struct{Body string `json:"body"`} true "Message Body"
+// @Param        request body SendMessageRequest true "Message Body"
 // @Success      201  {object}  map[string]int64
 // @Failure      400  {object}  map[string]string
 // @Router       /chats/{id}/messages [post]
@@ -307,7 +328,7 @@ func (h *ChatHandler) KickMember(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        id      path      int64  true  "Chat ID"
-// @Param        request body struct{Title string `json:"title"`} true "Update Request"
+// @Param        request body UpdateGroupRequest true "Update Request"
 // @Success      204  "No Content"
 // @Failure      400  {object}  map[string]string
 // @Router       /chats/{id} [patch]
@@ -438,7 +459,7 @@ func (h *ChatHandler) RegisterDevice(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        id   path      int64  true  "Chat ID"
-// @Param        request body struct{LastReadID int64 `json:"lastReadId"`} true "Mark Read Request"
+// @Param        request body MarkReadRequest true "Mark Read Request"
 // @Success      204  "No Content"
 // @Failure      400  {object}  map[string]string
 // @Router       /chats/{id}/read [post]
@@ -465,3 +486,128 @@ func (h *ChatHandler) MarkRead(c *gin.Context) {
 
 	c.Status(http.StatusNoContent)
 }
+
+// AddReaction godoc
+// @Summary      Add reaction
+// @Description  Add an emoji reaction to a message
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id      path      int64  true  "Chat ID"
+// @Param        msgId   path      int64  true  "Message ID"
+// @Param        request body ReactionRequest true "Reaction Request"
+// @Success      201  {object}  domain.Reaction
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/messages/{msgId}/reactions [post]
+func (h *ChatHandler) AddReaction(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	msgID, err := strconv.ParseInt(c.Param("msgId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message ID"})
+		return
+	}
+
+	var req ReactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID, _ := auth.GetUserID(c)
+	reaction, err := h.service.AddReaction(c.Request.Context(), chatID, msgID, userID, req.Emoji)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, reaction)
+}
+
+// RemoveReaction godoc
+// @Summary      Remove reaction
+// @Description  Remove an emoji reaction from a message
+// @Tags         chats
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id      path      int64   true  "Chat ID"
+// @Param        msgId   path      int64   true  "Message ID"
+// @Param        emoji   path      string  true  "Emoji"
+// @Success      204  "No Content"
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/messages/{msgId}/reactions/{emoji} [delete]
+func (h *ChatHandler) RemoveReaction(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	msgID, err := strconv.ParseInt(c.Param("msgId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message ID"})
+		return
+	}
+
+	emoji := c.Param("emoji")
+	if emoji == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "emoji is required"})
+		return
+	}
+
+	userID, _ := auth.GetUserID(c)
+	if err := h.service.RemoveReaction(c.Request.Context(), chatID, msgID, userID, emoji); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// GetThreadReplies godoc
+// @Summary      Get thread replies
+// @Description  Get all replies to a parent message
+// @Tags         chats
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id      path      int64  true  "Chat ID"
+// @Param        msgId   path      int64  true  "Parent Message ID"
+// @Param        limit   query     int    false "Limit"
+// @Success      200  {array}   domain.Message
+// @Failure      400  {object}  map[string]string
+// @Router       /chats/{id}/messages/{msgId}/replies [get]
+func (h *ChatHandler) GetThreadReplies(c *gin.Context) {
+	chatID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat ID"})
+		return
+	}
+
+	msgID, err := strconv.ParseInt(c.Param("msgId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message ID"})
+		return
+	}
+
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	userID, _ := auth.GetUserID(c)
+	replies, err := h.service.GetThreadReplies(c.Request.Context(), chatID, msgID, userID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, replies)
+}
+

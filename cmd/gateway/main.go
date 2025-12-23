@@ -218,6 +218,14 @@ func main() {
 		protected.POST("/chats/:id/messages", chatHandler.SendMessage)
 		protected.POST("/chats/:id/read", chatHandler.MarkRead) // New route
 		protected.GET("/chats/:id/members", chatHandler.GetChatMembers)
+		
+		// Reaction routes
+		protected.POST("/chats/:id/messages/:msgId/reactions", chatHandler.AddReaction)
+		protected.DELETE("/chats/:id/messages/:msgId/reactions/:emoji", chatHandler.RemoveReaction)
+		
+		// Thread routes
+		protected.GET("/chats/:id/messages/:msgId/replies", chatHandler.GetThreadReplies)
+		
 		protected.POST("/devices", chatHandler.RegisterDevice)
 
 		// Media routes

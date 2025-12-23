@@ -82,4 +82,31 @@ export const chatApi = {
     demoteMember: async (chatId: number, userId: number): Promise<void> => {
         await api.post(`/chats/${chatId}/members/${userId}/demote`);
     },
+
+    // Reactions
+    addReaction: async (chatId: number, msgId: number, emoji: string): Promise<void> => {
+        await api.post(`/chats/${chatId}/messages/${msgId}/reactions`, { emoji });
+    },
+
+    removeReaction: async (chatId: number, msgId: number, emoji: string): Promise<void> => {
+        await api.delete(`/chats/${chatId}/messages/${msgId}/reactions/${encodeURIComponent(emoji)}`);
+    },
+
+    // Threads
+    getThreadReplies: async (chatId: number, msgId: number, limit = 50): Promise<Message[]> => {
+        const response = await api.get<Message[]>(`/chats/${chatId}/messages/${msgId}/replies`, {
+            params: { limit },
+        });
+        return response.data;
+    },
+
+    sendReply: async (chatId: number, parentMsgId: number, body: string, mediaUrl?: string): Promise<{ messageId: number }> => {
+        const response = await api.post<{ messageId: number }>(`/chats/${chatId}/messages`, {
+            body,
+            mediaUrl,
+            replyToId: parentMsgId,
+        });
+        return response.data;
+    },
 };
+

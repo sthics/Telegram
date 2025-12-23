@@ -44,15 +44,15 @@ type ChatMember struct {
 
 // Message represents a chat message
 type Message struct {
-	ID        int64     `json:"id"`
-	ChatID    int64     `json:"chat_id"`
-	UserID    int64     `json:"user_id"`
-	Body      string    `json:"body"`
-	MediaURL  string    `json:"media_url,omitempty"`
-	ReplyToID *int64    `json:"reply_to_id,omitempty"`
-	Reactions []byte    `json:"reactions"` // JSONB
-	CreatedAt time.Time `json:"created_at"`
-	Status    int16     `json:"status"` // 1=Sent, 2=Read
+	ID        int64      `json:"id"`
+	ChatID    int64      `json:"chat_id"`
+	UserID    int64      `json:"user_id"`
+	Body      string     `json:"body"`
+	MediaURL  string     `json:"media_url,omitempty"`
+	ReplyToID *int64     `json:"reply_to_id,omitempty"`
+	Reactions []Reaction `json:"reactions,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	Status    int16      `json:"status"` // 1=Sent, 2=Read
 }
 
 // Receipt status
@@ -78,6 +78,15 @@ type DeviceToken struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// Reaction represents an emoji reaction to a message
+type Reaction struct {
+	ID        int64     `json:"id"`
+	MessageID int64     `json:"message_id"`
+	UserID    int64     `json:"user_id"`
+	Emoji     string    `json:"emoji"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // ChatRepository defines the interface for chat data access
 type ChatRepository interface {
 	CreateChat(ctx context.Context, chat *Chat, memberIDs []int64) (*Chat, error)
@@ -100,4 +109,14 @@ type ChatRepository interface {
 	AddDeviceToken(ctx context.Context, token *DeviceToken) error
 	GetDeviceTokens(ctx context.Context, userID int64) ([]string, error)
 	GetPrivateChatBetweenUsers(ctx context.Context, userA, userB int64) (*Chat, error)
+
+	// Reactions
+	AddReaction(ctx context.Context, msgID, userID int64, emoji string) (*Reaction, error)
+	RemoveReaction(ctx context.Context, msgID, userID int64, emoji string) error
+	RemoveAllUserReactions(ctx context.Context, msgID, userID int64) error
+	GetReactions(ctx context.Context, msgID int64) ([]Reaction, error)
+
+	// Threads
+	GetThreadReplies(ctx context.Context, parentMsgID int64, limit int) ([]Message, error)
+	GetReplyCount(ctx context.Context, msgID int64) (int64, error)
 }

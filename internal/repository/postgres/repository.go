@@ -269,6 +269,18 @@ func (r *ChatRepository) GetMessageHistory(ctx context.Context, chatID int64, li
 	msgs := make([]domain.Message, len(daos))
 	for i, dao := range daos {
 		msgs[i] = *dao.ToDomain()
+		
+		// Fetch reactions for this message
+		var reactionDAOs []ReactionDAO
+		if err := r.db.WithContext(ctx).
+			Where("message_id = ?", dao.ID).
+			Find(&reactionDAOs).Error; err == nil {
+			reactions := make([]domain.Reaction, len(reactionDAOs))
+			for j, rDAO := range reactionDAOs {
+				reactions[j] = *rDAO.ToDomain()
+			}
+			msgs[i].Reactions = reactions
+		}
 	}
 	return msgs, nil
 }
@@ -321,3 +333,73 @@ func (r *ChatRepository) GetPrivateChatBetweenUsers(ctx context.Context, userA, 
 	}
 	return dao.ToDomain(), nil
 }
+
+// AddReaction adds an emoji reaction to a message
+func (r *ChatRepository) AddReaction(ctx context.Context, msgID, userID int64, emoji string) (*domain.Reaction, error) {
+	dao := &ReactionDAO{
+		MessageID: msgID,
+		UserID:    userID,
+		Emoji:     emoji,
+	}
+	if err := r.db.WithContext(ctx).Create(dao).Error; err != nil {
+		return nil, err
+	}
+	return dao.ToDomain(), nil
+}
+
+// RemoveReaction removes an emoji reaction from a message
+func (r *ChatRepository) RemoveReaction(ctx context.Context, msgID, userID int64, emoji string) error {
+	return r.db.WithContext(ctx).
+		Where("message_id = ? AND user_id = ? AND emoji = ?", msgID, userID, emoji).
+		Delete(&ReactionDAO{}).Error
+}
+
+// RemoveAllUserReactions removes all reactions from a user on a specific message
+func (r *ChatRepository) RemoveAllUserReactions(ctx context.Context, msgID, userID int64) error {
+	return r.db.WithContext(ctx).
+		Where("message_id = ? AND user_id = ?", msgID, userID).
+		Delete(&ReactionDAO{}).Error
+}
+
+// GetReactions returns all reactions for a message
+func (r *ChatRepository) GetReactions(ctx context.Context, msgID int64) ([]domain.Reaction, error) {
+	var daos []ReactionDAO
+	if err := r.db.WithContext(ctx).Where("message_id = ?", msgID).Find(&daos).Error; err != nil {
+		return nil, err
+	}
+
+	reactions := make([]domain.Reaction, len(daos))
+	for i, dao := range daos {
+		reactions[i] = *dao.ToDomain()
+	}
+	return reactions, nil
+}
+
+// GetThreadReplies returns all messages that are replies to a parent message
+func (r *ChatRepository) GetThreadReplies(ctx context.Context, parentMsgID int64, limit int) ([]domain.Message, error) {
+	var daos []MessageDAO
+	if err := r.db.WithContext(ctx).
+		Where("reply_to_id = ?", parentMsgID).
+		Order("id ASC").
+		Limit(limit).
+		Find(&daos).Error; err != nil {
+		return nil, err
+	}
+
+	msgs := make([]domain.Message, len(daos))
+	for i, dao := range daos {
+		msgs[i] = *dao.ToDomain()
+	}
+	return msgs, nil
+}
+
+// GetReplyCount returns the count of replies to a parent message
+func (r *ChatRepository) GetReplyCount(ctx context.Context, msgID int64) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&MessageDAO{}).
+		Where("reply_to_id = ?", msgID).
+		Count(&count).Error
+	return count, err
+}
+

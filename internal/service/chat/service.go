@@ -315,3 +315,78 @@ func (s *Service) GetChatMembers(ctx context.Context, chatID, userID int64) ([]d
 func (s *Service) IsMember(ctx context.Context, chatID, userID int64) (bool, error) {
 	return s.chatRepo.IsMember(ctx, chatID, userID)
 }
+
+// AddReaction adds an emoji reaction to a message (one reaction per user per message)
+func (s *Service) AddReaction(ctx context.Context, chatID, msgID, userID int64, emoji string) (*domain.Reaction, error) {
+	// Check membership
+	isMember, err := s.chatRepo.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, fmt.Errorf("permission denied: user is not a member of this chat")
+	}
+
+	// Remove any existing reaction from this user on this message (enforce 1 reaction per user per message)
+	_ = s.chatRepo.RemoveAllUserReactions(ctx, msgID, userID)
+
+	reaction, err := s.chatRepo.AddReaction(ctx, msgID, userID, emoji)
+	if err != nil {
+		return nil, err
+	}
+
+	// Broadcast reaction event to chat
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":       "ReactionAdded",
+		"chat_id":    chatID,
+		"message_id": msgID,
+		"user_id":    userID,
+		"emoji":      emoji,
+	})
+	_ = s.broker.PublishToDeliveryExchange(ctx, chatID, payload)
+
+	return reaction, nil
+}
+
+// RemoveReaction removes an emoji reaction from a message
+func (s *Service) RemoveReaction(ctx context.Context, chatID, msgID, userID int64, emoji string) error {
+	// Check membership
+	isMember, err := s.chatRepo.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return fmt.Errorf("permission denied: user is not a member of this chat")
+	}
+
+	if err := s.chatRepo.RemoveReaction(ctx, msgID, userID, emoji); err != nil {
+		return err
+	}
+
+	// Broadcast reaction removal event to chat
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":       "ReactionRemoved",
+		"chat_id":    chatID,
+		"message_id": msgID,
+		"user_id":    userID,
+		"emoji":      emoji,
+	})
+	_ = s.broker.PublishToDeliveryExchange(ctx, chatID, payload)
+
+	return nil
+}
+
+// GetThreadReplies returns all replies to a parent message
+func (s *Service) GetThreadReplies(ctx context.Context, chatID, parentMsgID, userID int64, limit int) ([]domain.Message, error) {
+	// Check membership
+	isMember, err := s.chatRepo.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, fmt.Errorf("permission denied: user is not a member of this chat")
+	}
+
+	return s.chatRepo.GetThreadReplies(ctx, parentMsgID, limit)
+}
+

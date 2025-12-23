@@ -124,7 +124,7 @@ func (m *MessageDAO) ToDomain() *domain.Message {
 		Body:      m.Body,
 		MediaURL:  m.MediaURL,
 		ReplyToID: m.ReplyToID,
-		Reactions: m.Reactions,
+		// Reactions are loaded separately from the reactions table
 		CreatedAt: m.CreatedAt,
 	}
 }
@@ -137,7 +137,7 @@ func FromDomainMessage(m *domain.Message) *MessageDAO {
 		Body:      m.Body,
 		MediaURL:  m.MediaURL,
 		ReplyToID: m.ReplyToID,
-		Reactions: m.Reactions,
+		// Reactions are stored in a separate table now
 		CreatedAt: m.CreatedAt,
 	}
 }
@@ -194,6 +194,35 @@ func FromDomainDeviceToken(d *domain.DeviceToken) *DeviceTokenDAO {
 	}
 }
 
+// ReactionDAO represents an emoji reaction to a message
+type ReactionDAO struct {
+	ID        int64     `gorm:"primaryKey"`
+	MessageID int64     `gorm:"not null;index:idx_reactions_message_id"`
+	UserID    int64     `gorm:"not null"`
+	Emoji     string    `gorm:"size:32;not null"`
+	CreatedAt time.Time `gorm:"default:now()"`
+}
+
+func (r *ReactionDAO) ToDomain() *domain.Reaction {
+	return &domain.Reaction{
+		ID:        r.ID,
+		MessageID: r.MessageID,
+		UserID:    r.UserID,
+		Emoji:     r.Emoji,
+		CreatedAt: r.CreatedAt,
+	}
+}
+
+func FromDomainReaction(r *domain.Reaction) *ReactionDAO {
+	return &ReactionDAO{
+		ID:        r.ID,
+		MessageID: r.MessageID,
+		UserID:    r.UserID,
+		Emoji:     r.Emoji,
+		CreatedAt: r.CreatedAt,
+	}
+}
+
 // TableName overrides
 func (UserDAO) TableName() string        { return "users" }
 func (ChatDAO) TableName() string        { return "chats" }
@@ -201,3 +230,5 @@ func (ChatMemberDAO) TableName() string  { return "chat_members" }
 func (MessageDAO) TableName() string     { return "messages" }
 func (ReceiptDAO) TableName() string     { return "receipts" }
 func (DeviceTokenDAO) TableName() string { return "device_tokens" }
+func (ReactionDAO) TableName() string    { return "reactions" }
+

@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Loader2, Paperclip, MoreVertical } from 'lucide-react';
+import { Send, Loader2, Paperclip, MoreVertical, X, CornerUpLeft } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/store';
 import { useChatStore } from '../stores/chatStore';
 import { chatApi } from '../api';
@@ -14,10 +14,12 @@ export const ChatWindow = () => {
     const activeChat = useChatStore((state) => state.activeChat);
     const currentUser = useAuthStore((state) => state.user);
     const [message, setMessage] = useState('');
+    const [replyingTo, setReplyingTo] = useState<Message | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const queryClient = useQueryClient();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Fetch messages
     const { data: messages, isLoading } = useQuery({
@@ -53,6 +55,7 @@ export const ChatWindow = () => {
 
     useEffect(() => {
         lastReadIdRef.current = 0;
+        setReplyingTo(null);
     }, [activeChat?.id]);
 
     useEffect(() => {
@@ -66,9 +69,11 @@ export const ChatWindow = () => {
 
     // Send Message Mutation
     const sendMessageMutation = useMutation({
-        mutationFn: ({ text, mediaUrl }: { text: string; mediaUrl?: string }) =>
-            chatApi.sendMessage(activeChat!.id, text, mediaUrl),
-        onMutate: async ({ text, mediaUrl }) => {
+        mutationFn: ({ text, mediaUrl, replyToId }: { text: string; mediaUrl?: string; replyToId?: number }) =>
+            replyToId
+                ? chatApi.sendReply(activeChat!.id, replyToId, text, mediaUrl)
+                : chatApi.sendMessage(activeChat!.id, text, mediaUrl),
+        onMutate: async ({ text, mediaUrl, replyToId }) => {
             await queryClient.cancelQueries({ queryKey: ['messages', activeChat!.id] });
             const previousMessages = queryClient.getQueryData<Message[]>(['messages', activeChat!.id]);
             const optimisticMessage: Message = {
@@ -77,6 +82,7 @@ export const ChatWindow = () => {
                 user_id: currentUser!.id,
                 body: text,
                 media_url: mediaUrl,
+                reply_to_id: replyToId,
                 created_at: new Date().toISOString(),
                 reactions: [],
                 status: 1,
@@ -92,6 +98,7 @@ export const ChatWindow = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['messages', activeChat!.id] });
             queryClient.invalidateQueries({ queryKey: ['chats'] });
+            setReplyingTo(null);
         },
     });
 
@@ -103,7 +110,7 @@ export const ChatWindow = () => {
             const { uploadUrl, objectKey } = await chatApi.getPresignedUrl(file.name, file.type || 'application/octet-stream');
             await chatApi.uploadFileToUrl(uploadUrl, file, file.type || 'application/octet-stream');
             const publicUrl = `http://localhost:9000/chat-media/${objectKey}`;
-            sendMessageMutation.mutate({ text: file.name, mediaUrl: publicUrl });
+            sendMessageMutation.mutate({ text: file.name, mediaUrl: publicUrl, replyToId: replyingTo?.id });
         } catch (error) {
             console.error('Failed to upload file:', error);
         } finally {
@@ -119,8 +126,17 @@ export const ChatWindow = () => {
 
     const handleSendMessage = () => {
         if (!message.trim()) return;
-        sendMessageMutation.mutate({ text: message });
+        sendMessageMutation.mutate({ text: message, replyToId: replyingTo?.id });
         setMessage('');
+    };
+
+    const handleReply = (msg: Message) => {
+        setReplyingTo(msg);
+        textareaRef.current?.focus();
+    };
+
+    const cancelReply = () => {
+        setReplyingTo(null);
     };
 
     if (!activeChat) {
@@ -169,6 +185,7 @@ export const ChatWindow = () => {
                         <MessageBubble
                             key={msg.id}
                             message={msg}
+                            onReply={handleReply}
                             innerRef={(node) => {
                                 if (node && observer.current) {
                                     observer.current.observe(node);
@@ -185,52 +202,79 @@ export const ChatWindow = () => {
             </div>
 
             {/* Input Area */}
-            <div className="p-4 bg-surface border-t border-border-subtle">
-                <div className="flex items-end gap-2 max-w-4xl mx-auto">
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-text-secondary hover:text-brand-primary mb-1"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={sendMessageMutation.isPending}
-                    >
-                        <Paperclip className="w-5 h-5" />
-                    </Button>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleFileSelect}
-                    />
-
-                    <div className="flex-1 bg-app border border-border-subtle rounded-2xl px-4 py-2 focus-within:border-brand-primary focus-within:ring-1 focus-within:ring-brand-primary transition-all">
-                        <textarea
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSendMessage();
-                                }
-                            }}
-                            placeholder="Type a message..."
-                            className="w-full bg-transparent border-none focus:ring-0 resize-none max-h-32 text-text-primary placeholder:text-text-tertiary"
-                            rows={1}
-                            style={{ minHeight: '24px' }}
-                        />
+            <div className="bg-surface border-t border-border-subtle">
+                {/* Reply Preview Bar */}
+                {replyingTo && (
+                    <div className="px-4 py-2 bg-surface-hover border-b border-border-subtle flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm">
+                            <CornerUpLeft className="w-4 h-4 text-brand-primary" />
+                            <div className="text-text-secondary">
+                                Replying to <span className="text-text-primary font-medium">message</span>
+                            </div>
+                            <div className="text-text-tertiary truncate max-w-[200px]">
+                                {replyingTo.body}
+                            </div>
+                        </div>
+                        <button
+                            onClick={cancelReply}
+                            className="p-1 hover:bg-surface rounded text-text-secondary hover:text-text-primary transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
                     </div>
-                    <Button
-                        size="icon"
-                        className="mb-1 bg-brand-primary hover:bg-brand-hover text-white shadow-sm rounded-full w-10 h-10 flex items-center justify-center transition-transform active:scale-95"
-                        onClick={handleSendMessage}
-                        disabled={!message.trim() && !sendMessageMutation.isPending}
-                    >
-                        {sendMessageMutation.isPending ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                            <Send className="w-5 h-5 ml-0.5" />
-                        )}
-                    </Button>
+                )}
+
+                <div className="p-4">
+                    <div className="flex items-end gap-2 max-w-4xl mx-auto">
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-text-secondary hover:text-brand-primary mb-1"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={sendMessageMutation.isPending}
+                        >
+                            <Paperclip className="w-5 h-5" />
+                        </Button>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            className="hidden"
+                            onChange={handleFileSelect}
+                        />
+
+                        <div className="flex-1 bg-app border border-border-subtle rounded-2xl px-4 py-2 focus-within:border-brand-primary focus-within:ring-1 focus-within:ring-brand-primary transition-all">
+                            <textarea
+                                ref={textareaRef}
+                                value={message}
+                                onChange={(e) => setMessage(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSendMessage();
+                                    }
+                                    if (e.key === 'Escape' && replyingTo) {
+                                        cancelReply();
+                                    }
+                                }}
+                                placeholder={replyingTo ? "Type your reply..." : "Type a message..."}
+                                className="w-full bg-transparent border-none focus:ring-0 resize-none max-h-32 text-text-primary placeholder:text-text-tertiary"
+                                rows={1}
+                                style={{ minHeight: '24px' }}
+                            />
+                        </div>
+                        <Button
+                            size="icon"
+                            className="mb-1 bg-brand-primary hover:bg-brand-hover text-white shadow-sm rounded-full w-10 h-10 flex items-center justify-center transition-transform active:scale-95"
+                            onClick={handleSendMessage}
+                            disabled={!message.trim() && !sendMessageMutation.isPending}
+                        >
+                            {sendMessageMutation.isPending ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <Send className="w-5 h-5 ml-0.5" />
+                            )}
+                        </Button>
+                    </div>
                 </div>
             </div>
 
@@ -244,3 +288,4 @@ export const ChatWindow = () => {
         </div>
     );
 };
+

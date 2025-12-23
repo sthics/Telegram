@@ -1,5 +1,13 @@
 import type { User } from '@/features/auth/types';
 
+export interface Reaction {
+    id: number;
+    message_id: number;
+    user_id: number;
+    emoji: string;
+    created_at: string;
+}
+
 export interface Message {
     id: number;
     chat_id: number;
@@ -8,10 +16,11 @@ export interface Message {
     media_url?: string;
     media_type?: string; // image, video, etc.
     reply_to_id?: number;
-    reactions?: any; // JSONB
+    reactions?: Reaction[];
     created_at: string; // ISO string
     status?: number; // 1=Sent, 2=Delivered, 3=Read
     user?: User; // Sender details
+    reply_count?: number; // Computed: how many replies this message has
 }
 
 export interface Chat {
