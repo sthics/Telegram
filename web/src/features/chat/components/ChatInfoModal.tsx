@@ -36,7 +36,7 @@ export const ChatInfoModal = ({ isOpen, onClose, chat }: ChatInfoModalProps) => 
     });
 
     const myMember = members?.find(m => m.user_id === currentUser?.id);
-    const isAdmin = myMember?.role === 'admin';
+    const isAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
     const isGroup = chat.type === 2;
 
     const updateTitleMutation = useMutation({
@@ -179,9 +179,9 @@ export const ChatInfoModal = ({ isOpen, onClose, chat }: ChatInfoModalProps) => 
                                             </p>
                                             <span className={clsx(
                                                 "text-xs px-1.5 py-0.5 rounded-full inline-block mt-0.5",
-                                                member.role === 'admin' ? "bg-brand-primary/10 text-brand-primary" : "text-text-tertiary"
+                                                (member.role === 'owner' || member.role === 'admin') ? "bg-brand-primary/10 text-brand-primary" : "text-text-tertiary"
                                             )}>
-                                                {member.role === 'admin' ? 'Admin' : 'Member'}
+                                                {member.role === 'owner' ? 'Owner' : member.role === 'admin' ? 'Admin' : 'Member'}
                                             </span>
                                         </div>
                                     </div>

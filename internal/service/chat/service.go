@@ -45,7 +45,7 @@ func (s *Service) CreateChat(ctx context.Context, creatorID int64, reqType int16
 	for _, memberID := range allMembers {
 		role := domain.RoleMember
 		if memberID == creatorID {
-			role = domain.RoleAdmin
+			role = domain.RoleOwner
 		}
 		
 		if err := s.chatRepo.AddMember(ctx, chat.ID, memberID, role); err != nil {
@@ -223,7 +223,7 @@ func (s *Service) isAdmin(ctx context.Context, chatID, userID int64) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return role == domain.RoleAdmin, nil
+	return role == domain.RoleOwner || role == domain.RoleAdmin, nil
 }
 
 func (s *Service) ProcessMessage(ctx context.Context, msg *domain.Message, clientUUID string) error {

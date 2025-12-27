@@ -112,7 +112,6 @@ type MessageDAO struct {
 	Body      string    `gorm:"not null"`
 	MediaURL  string    ``
 	ReplyToID *int64    ``
-	Reactions []byte    `gorm:"type:jsonb;default:'{}'"`
 	CreatedAt time.Time `gorm:"default:now();index:idx_messages_chat_created"`
 }
 

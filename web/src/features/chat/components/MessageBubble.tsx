@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { clsx } from 'clsx';
-import { Check, CheckCheck, CornerUpLeft, MessageSquare, SmilePlus } from 'lucide-react';
+import { Check, CheckCheck, CornerUpLeft, MessageSquare, SmilePlus, AlertCircle } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Message, Reaction } from '../types';
 import { useAuthStore } from '@/features/auth/store';
 import { chatApi } from '../api';
+import { Avatar } from '@/shared/components/Avatar';
 
 interface MessageBubbleProps {
     message: Message;
     innerRef?: (node?: Element | null) => void;
     onReply?: (message: Message) => void;
     onViewThread?: (message: Message) => void;
+    showAvatar?: boolean;
+    isFirstInGroup?: boolean;
+    isLastInGroup?: boolean;
+    senderName?: string;
 }
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '👎', '🎉', '🔥'];
@@ -31,7 +36,37 @@ const groupReactions = (reactions: Reaction[] | null | undefined) => {
     return grouped;
 };
 
-export const MessageBubble = ({ message, innerRef, onReply, onViewThread }: MessageBubbleProps) => {
+// Message status component
+const MessageStatus = ({ status, isMyMessage }: { status: number; isMyMessage: boolean }) => {
+    if (!isMyMessage) return null;
+
+    const statusConfig = {
+        1: { icon: Check, label: 'Sending', className: 'text-current opacity-50' },
+        2: { icon: Check, label: 'Sent', className: 'text-current opacity-70' },
+        3: { icon: CheckCheck, label: 'Read', className: 'text-brand-300' },
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig[1];
+    const Icon = config.icon;
+
+    return (
+        <Icon
+            className={clsx('w-3.5 h-3.5', config.className)}
+            aria-label={config.label}
+        />
+    );
+};
+
+export const MessageBubble = ({
+    message,
+    innerRef,
+    onReply,
+    onViewThread,
+    showAvatar = true,
+    isFirstInGroup = true,
+    isLastInGroup = true,
+    senderName,
+}: MessageBubbleProps) => {
     const currentUser = useAuthStore((state) => state.user);
     const isMyMessage = message.user_id === currentUser?.id;
     const queryClient = useQueryClient();
@@ -39,6 +74,8 @@ export const MessageBubble = ({ message, innerRef, onReply, onViewThread }: Mess
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
     const groupedReactions = groupReactions(message.reactions);
+    const isFailed = message.status === 0;
+    const isSending = message.status === 1;
 
     // Add reaction mutation
     const addReactionMutation = useMutation({
@@ -75,67 +112,123 @@ export const MessageBubble = ({ message, innerRef, onReply, onViewThread }: Mess
         }
     };
 
+    // Bubble shape based on position in group
+    const getBubbleRadius = () => {
+        if (isMyMessage) {
+            if (isFirstInGroup && isLastInGroup) return 'rounded-2xl rounded-br-md';
+            if (isFirstInGroup) return 'rounded-2xl rounded-br-md rounded-tr-2xl';
+            if (isLastInGroup) return 'rounded-2xl rounded-br-md rounded-tr-lg';
+            return 'rounded-2xl rounded-r-lg';
+        } else {
+            if (isFirstInGroup && isLastInGroup) return 'rounded-2xl rounded-bl-md';
+            if (isFirstInGroup) return 'rounded-2xl rounded-bl-md rounded-tl-2xl';
+            if (isLastInGroup) return 'rounded-2xl rounded-bl-md rounded-tl-lg';
+            return 'rounded-2xl rounded-l-lg';
+        }
+    };
+
     return (
         <div
             ref={innerRef}
-            className={clsx('flex group', isMyMessage ? 'justify-end' : 'justify-start')}
+            className={clsx(
+                'flex group gap-2',
+                isMyMessage ? 'justify-end' : 'justify-start',
+                !isLastInGroup && 'mb-0.5',
+                isLastInGroup && 'mb-1'
+            )}
             data-message-id={message.id}
             onMouseEnter={() => setShowActions(true)}
             onMouseLeave={() => { setShowActions(false); setShowEmojiPicker(false); }}
         >
-            <div className="flex flex-col max-w-[65%] relative">
+            {/* Avatar for other users */}
+            {!isMyMessage && (
+                <div className="w-8 shrink-0">
+                    {showAvatar && isLastInGroup && (
+                        <Avatar
+                            name={senderName || 'User'}
+                            size="sm"
+                        />
+                    )}
+                </div>
+            )}
+
+            <div className={clsx(
+                'flex flex-col max-w-[70%] relative',
+                isMyMessage ? 'items-end' : 'items-start'
+            )}>
+                {/* Sender name for group chats */}
+                {!isMyMessage && isFirstInGroup && senderName && (
+                    <span className="text-caption font-medium text-brand-400 mb-1 ml-1">
+                        {senderName}
+                    </span>
+                )}
+
                 {/* Reply indicator */}
                 {message.reply_to_id && (
                     <div className={clsx(
-                        "text-xs px-2 py-1 mb-1 rounded border-l-2",
+                        "text-caption px-3 py-1.5 mb-1 rounded-lg border-l-2 max-w-full",
                         isMyMessage
-                            ? "bg-white/10 border-white/30 text-white/70 self-end"
-                            : "bg-surface-hover border-brand-primary/50 text-text-secondary self-start"
+                            ? "bg-white/10 border-white/40 text-white/80"
+                            : "bg-bg-elevated border-brand-500/50 text-text-secondary"
                     )}>
-                        <CornerUpLeft className="w-3 h-3 inline mr-1" />
-                        Replying to message
+                        <CornerUpLeft className="w-3 h-3 inline mr-1.5 opacity-70" />
+                        <span className="truncate">Replying to message</span>
                     </div>
                 )}
 
                 {/* Message bubble */}
                 <div
                     className={clsx(
-                        'px-4 py-2 shadow-sm',
+                        'px-3.5 py-2 shadow-sm transition-all duration-150',
+                        getBubbleRadius(),
                         isMyMessage
-                            ? 'bg-brand-primary text-white rounded-lg rounded-tr-none self-end'
-                            : 'bg-surface text-text-primary rounded-lg rounded-tl-none self-start'
+                            ? 'bg-brand-500 text-white'
+                            : 'bg-bg-raised text-text-primary border border-border-subtle',
+                        isSending && 'opacity-70',
+                        isFailed && 'bg-error/80'
                     )}
                 >
+                    {/* Image attachment */}
                     {message.media_url && (
-                        <div className="mb-2">
+                        <div className="mb-2 -mx-1 -mt-0.5">
                             <img
                                 src={message.media_url}
                                 alt="attachment"
-                                className="rounded-md max-w-full h-auto object-cover max-h-64"
+                                className="rounded-lg max-w-full h-auto object-cover max-h-64"
+                                loading="lazy"
                             />
                         </div>
                     )}
-                    {message.body && <p className="text-sm whitespace-pre-wrap">{message.body}</p>}
+
+                    {/* Message text */}
+                    {message.body && (
+                        <p className="text-body-sm whitespace-pre-wrap break-words">
+                            {message.body}
+                        </p>
+                    )}
+
+                    {/* Timestamp and status */}
                     <div className={clsx(
-                        "flex items-center justify-end gap-1 mt-1",
-                        isMyMessage ? "text-white/70" : "text-text-secondary"
+                        "flex items-center justify-end gap-1.5 mt-1 -mb-0.5",
+                        isMyMessage ? "text-white/70" : "text-text-tertiary"
                     )}>
-                        <span className="text-[11px]">
-                            {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        {isMyMessage && (
-                            message.status === 3 ?
-                                <CheckCheck className="w-3 h-3" /> :
-                                <Check className="w-3 h-3" />
+                        {isFailed && (
+                            <AlertCircle className="w-3 h-3 text-white" />
                         )}
+                        <span className="text-caption">
+                            {new Date(message.created_at).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })}
+                        </span>
+                        <MessageStatus status={message.status ?? 1} isMyMessage={isMyMessage} />
                     </div>
                 </div>
 
-                {/* Reactions badge - below the message */}
+                {/* Reactions badge */}
                 {Object.keys(groupedReactions).length > 0 && (
                     <div className={clsx(
-                        "flex gap-1 mt-1 bg-surface/80 backdrop-blur-sm rounded-full shadow-sm border border-border-subtle px-2 py-0.5",
-                        isMyMessage ? "self-end" : "self-start"
+                        "flex gap-0.5 mt-1 glass rounded-full px-1.5 py-0.5 animate-scale-in"
                     )}>
                         {Object.entries(groupedReactions).map(([emoji, { count, userIds }]) => {
                             const userReacted = userIds.includes(currentUser?.id ?? -1);
@@ -144,12 +237,20 @@ export const MessageBubble = ({ message, innerRef, onReply, onViewThread }: Mess
                                     key={emoji}
                                     onClick={() => handleReactionClick(emoji)}
                                     className={clsx(
-                                        "text-sm flex items-center gap-0.5 transition-colors",
-                                        userReacted ? "text-brand-primary" : "text-text-secondary hover:text-brand-primary"
+                                        "flex items-center gap-0.5 px-1 py-0.5 rounded-full transition-all duration-150",
+                                        "hover:bg-bg-elevated active:scale-95",
+                                        userReacted && "bg-brand-500/20"
                                     )}
                                 >
-                                    <span>{emoji}</span>
-                                    {count > 1 && <span className="text-xs">{count}</span>}
+                                    <span className="text-sm">{emoji}</span>
+                                    {count > 1 && (
+                                        <span className={clsx(
+                                            "text-caption",
+                                            userReacted ? "text-brand-400" : "text-text-tertiary"
+                                        )}>
+                                            {count}
+                                        </span>
+                                    )}
                                 </button>
                             );
                         })}
@@ -160,56 +261,54 @@ export const MessageBubble = ({ message, innerRef, onReply, onViewThread }: Mess
                 {message.reply_count && message.reply_count > 0 && onViewThread && (
                     <button
                         onClick={() => onViewThread(message)}
-                        className={clsx(
-                            "flex items-center gap-1 mt-1 text-xs text-brand-primary hover:underline",
-                            isMyMessage ? "self-end" : "self-start"
-                        )}
+                        className="flex items-center gap-1.5 mt-1.5 text-caption text-brand-400 hover:text-brand-300 transition-colors"
                     >
-                        <MessageSquare className="w-3 h-3" />
+                        <MessageSquare className="w-3.5 h-3.5" />
                         {message.reply_count} {message.reply_count === 1 ? 'reply' : 'replies'}
                     </button>
                 )}
 
-                {/* Action bar - absolute position to prevent layout shift */}
-                {showActions && (
-                    <div className={clsx(
-                        "absolute top-0 flex items-center gap-1 bg-surface rounded-lg shadow-md border border-border-subtle p-1 z-10",
-                        isMyMessage ? "right-full mr-2" : "left-full ml-2"
-                    )}>
+                {/* Action bar */}
+                <div className={clsx(
+                    "absolute top-0 flex items-center gap-0.5 glass rounded-lg p-0.5 z-10 transition-all duration-150",
+                    showActions ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none",
+                    isMyMessage ? "right-full mr-2" : "left-full ml-2"
+                )}>
+                    <button
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        className="p-1.5 rounded-md hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors"
+                        title="Add reaction"
+                    >
+                        <SmilePlus className="w-4 h-4" />
+                    </button>
+                    {onReply && (
                         <button
-                            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                            className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-colors"
-                            title="Add reaction"
+                            onClick={() => onReply(message)}
+                            className="p-1.5 rounded-md hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors"
+                            title="Reply"
                         >
-                            <SmilePlus className="w-4 h-4" />
+                            <CornerUpLeft className="w-4 h-4" />
                         </button>
-                        {onReply && (
-                            <button
-                                onClick={() => onReply(message)}
-                                className="p-1.5 rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-colors"
-                                title="Reply"
-                            >
-                                <CornerUpLeft className="w-4 h-4" />
-                            </button>
-                        )}
-                    </div>
-                )}
+                    )}
+                </div>
 
-                {/* Emoji picker dropdown - absolute position */}
+                {/* Emoji picker dropdown */}
                 {showEmojiPicker && (
                     <div className={clsx(
-                        "absolute top-8 flex flex-wrap gap-1 bg-surface rounded-lg shadow-lg border border-border-subtle p-2 max-w-[200px] z-20",
+                        "absolute top-8 glass rounded-xl p-2 z-20 animate-scale-in",
                         isMyMessage ? "right-full mr-2" : "left-full ml-2"
                     )}>
-                        {QUICK_EMOJIS.map((emoji) => (
-                            <button
-                                key={emoji}
-                                onClick={() => handleEmojiSelect(emoji)}
-                                className="p-1.5 hover:bg-surface-hover rounded transition-colors text-lg"
-                            >
-                                {emoji}
-                            </button>
-                        ))}
+                        <div className="flex gap-1">
+                            {QUICK_EMOJIS.map((emoji) => (
+                                <button
+                                    key={emoji}
+                                    onClick={() => handleEmojiSelect(emoji)}
+                                    className="p-1.5 hover:bg-bg-elevated rounded-lg transition-all duration-150 text-lg hover:scale-110 active:scale-95"
+                                >
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>

@@ -44,7 +44,7 @@ export interface CreateChatRequest {
 export interface ChatMember {
     chat_id: number;
     user_id: number;
-    role: 'admin' | 'member';
+    role: 'owner' | 'admin' | 'member';
     joined_at: string;
     user?: User;
 }

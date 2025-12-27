@@ -32,7 +32,7 @@ export const ChatDetailsModal = ({ isOpen, onClose, chat }: ChatDetailsModalProp
         return members.find(m => m.user_id === currentUser?.id)?.role;
     }, [members, currentUser?.id]);
 
-    const isAdmin = myRole === 'admin';
+    const isAdmin = myRole === 'owner' || myRole === 'admin';
 
     // Mutations
     const updateChatMutation = useMutation({
@@ -130,8 +130,10 @@ export const ChatDetailsModal = ({ isOpen, onClose, chat }: ChatDetailsModalProp
                                                     {member.user?.email.split('@')[0]}
                                                     {isMe && " (You)"}
                                                 </span>
-                                                {member.role === 'admin' && (
-                                                    <span className="text-[10px] uppercase font-bold text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded">Admin</span>
+                                                {(member.role === 'owner' || member.role === 'admin') && (
+                                                    <span className="text-[10px] uppercase font-bold text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded">
+                                                        {member.role === 'owner' ? 'Owner' : 'Admin'}
+                                                    </span>
                                                 )}
                                             </div>
                                             <span className="text-xs text-text-secondary">{member.user?.email}</span>

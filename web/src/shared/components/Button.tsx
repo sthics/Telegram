@@ -9,25 +9,62 @@ function cn(...inputs: ClassValue[]) {
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'link';
-    size?: 'default' | 'sm' | 'lg' | 'icon';
+    size?: 'default' | 'sm' | 'lg' | 'icon' | 'icon-sm' | 'icon-lg';
     isLoading?: boolean;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ({ className, variant = 'primary', size = 'default', isLoading, children, disabled, ...props }, ref) => {
+        const baseStyles = `
+            inline-flex items-center justify-center
+            font-medium text-body
+            rounded-md
+            transition-all duration-150 ease-out
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg
+            disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none
+            active:scale-[0.98]
+        `;
+
         const variants = {
-            primary: 'bg-brand-primary hover:bg-brand-hover text-white shadow-sm',
-            secondary: 'bg-surface hover:bg-surface-hover text-text-primary border border-border-subtle',
-            danger: 'bg-status-error hover:bg-red-600 text-white',
-            ghost: 'bg-transparent hover:bg-surface-hover text-text-secondary hover:text-text-primary',
-            link: 'bg-transparent text-brand-primary hover:underline p-0 h-auto',
+            primary: `
+                bg-brand-500 text-white
+                shadow-sm
+                hover:bg-brand-600 hover:-translate-y-px hover:shadow-md
+                active:bg-brand-700 active:translate-y-0 active:shadow-sm
+            `,
+            secondary: `
+                bg-bg-raised text-text-primary
+                border border-border-default
+                shadow-xs
+                hover:bg-bg-elevated hover:border-border-strong hover:-translate-y-px
+                active:bg-bg-overlay active:translate-y-0
+            `,
+            danger: `
+                bg-error text-white
+                shadow-sm
+                hover:bg-error-dark hover:-translate-y-px hover:shadow-md
+                active:translate-y-0 active:shadow-sm
+            `,
+            ghost: `
+                bg-transparent text-text-secondary
+                hover:bg-bg-elevated hover:text-text-primary
+                active:bg-bg-overlay
+            `,
+            link: `
+                bg-transparent text-brand-500
+                hover:text-brand-400 hover:underline
+                p-0 h-auto
+                active:scale-100
+            `,
         };
 
         const sizes = {
-            default: 'h-9 px-4',
-            sm: 'h-8 px-3 text-xs',
-            lg: 'h-10 px-8',
+            default: 'h-9 px-4 gap-2',
+            sm: 'h-8 px-3 text-body-sm gap-1.5',
+            lg: 'h-10 px-5 gap-2',
             icon: 'h-9 w-9',
+            'icon-sm': 'h-8 w-8',
+            'icon-lg': 'h-10 w-10',
         };
 
         return (
@@ -35,17 +72,20 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
                 ref={ref}
                 type="button"
                 disabled={disabled || isLoading}
-                className={cn(
-                    'inline-flex items-center justify-center rounded-md text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-primary/50 disabled:opacity-50 disabled:cursor-not-allowed',
-                    variants[variant],
-                    sizes[size],
-                    className
-                )}
+                className={cn(baseStyles, variants[variant], sizes[size], className)}
                 {...props}
             >
-                {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {children}
+                {isLoading ? (
+                    <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {!size.startsWith('icon') && children}
+                    </>
+                ) : (
+                    children
+                )}
             </button>
         );
     }
 );
+
+Button.displayName = 'Button';

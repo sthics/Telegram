@@ -1,15 +1,46 @@
 import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Camera, Loader2, User as UserIcon } from 'lucide-react';
+import { Camera } from 'lucide-react';
 import { authApi } from '../api';
 import { chatApi } from '@/features/chat/api';
 import { useAuthStore } from '../store';
 import { Button } from '@/shared/components/Button';
+import { Input } from '@/shared/components/Input';
+import { Modal } from '@/shared/components/Modal';
+import { Skeleton, SkeletonAvatar } from '@/shared/components/Skeleton';
+import { Avatar } from '@/shared/components/Avatar';
 
 interface ProfileSettingsProps {
     isOpen: boolean;
     onClose: () => void;
 }
+
+// Profile skeleton loading component
+const ProfileSkeleton = () => (
+    <div className="space-y-6 animate-fade-in">
+        {/* Avatar skeleton */}
+        <div className="flex flex-col items-center">
+            <SkeletonAvatar size="xl" className="w-24 h-24" />
+            <Skeleton variant="text" width={120} className="mt-3" />
+        </div>
+
+        {/* Form fields skeleton */}
+        <div className="space-y-4">
+            <div className="space-y-1.5">
+                <Skeleton variant="text" width={80} height={14} />
+                <Skeleton variant="rectangular" height={40} className="rounded-lg" />
+            </div>
+            <div className="space-y-1.5">
+                <Skeleton variant="text" width={40} height={14} />
+                <Skeleton variant="rectangular" height={80} className="rounded-lg" />
+            </div>
+            <div className="space-y-1.5">
+                <Skeleton variant="text" width={60} height={14} />
+                <Skeleton variant="rectangular" height={40} className="rounded-lg" />
+            </div>
+        </div>
+    </div>
+);
 
 export const ProfileSettings = ({ isOpen, onClose }: ProfileSettingsProps) => {
     const queryClient = useQueryClient();
@@ -43,7 +74,6 @@ export const ProfileSettings = ({ isOpen, onClose }: ProfileSettingsProps) => {
         mutationFn: authApi.updateProfile,
         onSuccess: (updatedUser) => {
             queryClient.setQueryData(['profile'], updatedUser);
-            // Update auth store
             if (token) {
                 setAuth(token, updatedUser);
             }
@@ -85,123 +115,99 @@ export const ProfileSettings = ({ isOpen, onClose }: ProfileSettingsProps) => {
         });
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
-            <div className="bg-surface rounded-2xl w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-border-subtle">
-                    <h2 className="text-lg font-semibold text-text-primary">Edit Profile</h2>
-                    <Button size="icon" variant="ghost" onClick={onClose}>
-                        <X className="w-5 h-5" />
-                    </Button>
-                </div>
-
-                {/* Content */}
-                <div className="p-6">
-                    {isLoading ? (
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="w-8 h-8 animate-spin text-brand-primary" />
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            {/* Avatar */}
-                            <div className="flex flex-col items-center">
-                                <div className="relative group">
-                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-brand-primary to-brand-hover flex items-center justify-center text-white text-3xl font-medium overflow-hidden">
-                                        {avatarPreview ? (
-                                            <img
-                                                src={avatarPreview}
-                                                alt="Avatar"
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <UserIcon className="w-12 h-12" />
-                                        )}
-                                    </div>
-                                    <button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        disabled={isUploading}
-                                        className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-                                    >
-                                        {isUploading ? (
-                                            <Loader2 className="w-6 h-6 text-white animate-spin" />
-                                        ) : (
-                                            <Camera className="w-6 h-6 text-white" />
-                                        )}
-                                    </button>
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={handleFileSelect}
+        <Modal isOpen={isOpen} onClose={onClose} title="Edit Profile" size="md">
+            {isLoading ? (
+                <ProfileSkeleton />
+            ) : (
+                <div className="space-y-6 animate-fade-in">
+                    {/* Avatar */}
+                    <div className="flex flex-col items-center">
+                        <div className="relative group">
+                            <div className="w-24 h-24 rounded-full overflow-hidden">
+                                {avatarPreview ? (
+                                    <img
+                                        src={avatarPreview}
+                                        alt="Avatar"
+                                        className="w-full h-full object-cover"
                                     />
-                                </div>
-                                <p className="text-xs text-text-tertiary mt-2">Click to change photo</p>
+                                ) : (
+                                    <Avatar
+                                        name={username || profile?.email || 'User'}
+                                        size="xl"
+                                        className="w-full h-full"
+                                    />
+                                )}
                             </div>
-
-                            {/* Username */}
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                                    Username
-                                </label>
-                                <input
-                                    type="text"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    placeholder="Enter username"
-                                    className="w-full px-4 py-2.5 bg-app border border-border-subtle rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all"
-                                />
-                            </div>
-
-                            {/* Bio */}
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                                    Bio
-                                </label>
-                                <textarea
-                                    value={bio}
-                                    onChange={(e) => setBio(e.target.value)}
-                                    placeholder="Write something about yourself..."
-                                    rows={3}
-                                    className="w-full px-4 py-2.5 bg-app border border-border-subtle rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all resize-none"
-                                />
-                            </div>
-
-                            {/* Email (read-only) */}
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1.5">
-                                    Email
-                                </label>
-                                <input
-                                    type="email"
-                                    value={profile?.email || ''}
-                                    disabled
-                                    className="w-full px-4 py-2.5 bg-app/50 border border-border-subtle rounded-lg text-text-tertiary cursor-not-allowed"
-                                />
-                            </div>
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
+                                className="absolute inset-0 rounded-full bg-bg-base/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center cursor-pointer"
+                            >
+                                {isUploading ? (
+                                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    <Camera className="w-6 h-6 text-white" />
+                                )}
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleFileSelect}
+                            />
                         </div>
-                    )}
-                </div>
+                        <p className="text-caption text-text-tertiary mt-2">
+                            Click to change photo
+                        </p>
+                    </div>
 
-                {/* Footer */}
-                <div className="flex justify-end gap-3 p-4 border-t border-border-subtle">
-                    <Button variant="ghost" onClick={onClose}>
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleSave}
-                        disabled={updateMutation.isPending || isLoading}
-                    >
-                        {updateMutation.isPending ? (
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        ) : null}
-                        Save
-                    </Button>
+                    {/* Form fields */}
+                    <div className="space-y-4">
+                        <Input
+                            label="Username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            placeholder="Enter username"
+                        />
+
+                        <div className="space-y-1.5">
+                            <label className="block text-label font-medium text-text-secondary">
+                                Bio
+                            </label>
+                            <textarea
+                                value={bio}
+                                onChange={(e) => setBio(e.target.value)}
+                                placeholder="Write something about yourself..."
+                                rows={3}
+                                className="w-full px-3 py-2.5 bg-bg border border-border-default rounded-lg text-body text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all resize-none"
+                            />
+                        </div>
+
+                        <Input
+                            label="Email"
+                            type="email"
+                            value={profile?.email || ''}
+                            disabled
+                            hint="Email cannot be changed"
+                        />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button variant="ghost" onClick={onClose}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSave}
+                            isLoading={updateMutation.isPending}
+                        >
+                            Save Changes
+                        </Button>
+                    </div>
                 </div>
-            </div>
-        </div>
+            )}
+        </Modal>
     );
 };

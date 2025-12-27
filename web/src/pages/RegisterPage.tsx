@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MessageCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/store';
 import { authApi } from '@/features/auth/api';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/Card';
+import { Card, CardContent, CardHeader } from '@/shared/components/Card';
 
 export const RegisterPage = () => {
     const navigate = useNavigate();
     const setAuth = useAuthStore((state) => state.setAuth);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [shake, setShake] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -36,44 +38,109 @@ export const RegisterPage = () => {
             navigate('/');
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to register');
+            setShake(true);
+            setTimeout(() => setShake(false), 500);
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-app p-4">
-            <Card className="w-full max-w-md">
-                <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl text-center">Create an account</CardTitle>
-                    <p className="text-center text-text-secondary text-sm">
-                        Enter your details to get started.
+        <div className="min-h-screen flex items-center justify-center bg-bg p-4">
+            {/* Background decoration */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute -top-40 -left-40 w-80 h-80 bg-brand-500/10 rounded-full blur-3xl" />
+                <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-brand-600/10 rounded-full blur-3xl" />
+            </div>
+
+            <Card
+                className={`w-full max-w-md relative animate-fade-in ${shake ? 'animate-shake' : ''}`}
+                variant="elevated"
+            >
+                <CardHeader className="text-center pb-2">
+                    {/* Back link */}
+                    <Link
+                        to="/login"
+                        className="absolute left-6 top-6 p-2 rounded-full hover:bg-bg-elevated transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-text-secondary" />
+                    </Link>
+
+                    {/* Logo */}
+                    <div className="mx-auto w-16 h-16 bg-gradient-to-br from-brand-400 to-brand-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-brand-500/25">
+                        <MessageCircle className="w-8 h-8 text-white" />
+                    </div>
+                    <h1 className="text-h1 text-text-primary">Create account</h1>
+                    <p className="text-body text-text-secondary mt-1">
+                        Join Telegram and start messaging
                     </p>
                 </CardHeader>
-                <CardContent>
+
+                <CardContent className="pt-4">
                     <form onSubmit={handleSubmit} className="space-y-4">
+                        {/* Error message */}
                         {error && (
-                            <div className="p-3 rounded-md bg-status-error/10 text-status-error text-sm">
-                                {error}
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-error/10 border border-error/20 text-error animate-slide-down">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <p className="text-body-sm">{error}</p>
                             </div>
                         )}
-                        <div className="grid grid-cols-2 gap-4">
-                            <Input name="firstName" label="First Name" placeholder="John" required />
-                            <Input name="lastName" label="Last Name" placeholder="Doe" />
-                        </div>
-                        <Input name="username" label="Username" placeholder="johndoe" required />
-                        <Input name="email" type="email" label="Email" placeholder="john@example.com" required />
-                        <Input name="password" type="password" label="Password" placeholder="••••••••" required />
 
-                        <Button type="submit" className="w-full" isLoading={isLoading}>
-                            Sign Up
-                        </Button>
-                        <div className="text-center text-sm text-text-secondary">
-                            Already have an account?{' '}
-                            <Link to="/login" className="text-brand-primary hover:underline">
-                                Sign in
-                            </Link>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input
+                                name="firstName"
+                                label="First name"
+                                placeholder="John"
+                                required
+                                autoComplete="given-name"
+                            />
+                            <Input
+                                name="lastName"
+                                label="Last name"
+                                placeholder="Doe"
+                                autoComplete="family-name"
+                            />
                         </div>
+
+                        <Input
+                            name="username"
+                            label="Username"
+                            placeholder="johndoe"
+                            required
+                            autoComplete="username"
+                            hint="This will be your unique identifier"
+                        />
+
+                        <Input
+                            name="email"
+                            type="email"
+                            label="Email"
+                            placeholder="john@example.com"
+                            required
+                            autoComplete="email"
+                        />
+
+                        <Input
+                            name="password"
+                            type="password"
+                            label="Password"
+                            placeholder="Create a password"
+                            required
+                            autoComplete="new-password"
+                            hint="Use 8 or more characters"
+                        />
+
+                        <Button
+                            type="submit"
+                            className="w-full"
+                            isLoading={isLoading}
+                        >
+                            Create Account
+                        </Button>
+
+                        <p className="text-center text-caption text-text-tertiary">
+                            By signing up, you agree to our Terms of Service and Privacy Policy
+                        </p>
                     </form>
                 </CardContent>
             </Card>
